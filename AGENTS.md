@@ -106,6 +106,24 @@ change was made.
   thing you can do; working around it quietly corrupts the experiment and nobody finds
   out for weeks.
 
+### Environment traps, each one already paid for
+
+- **The Tauri CLI is `tauri`, not `cargo tauri`.** It is installed from npm, which ships
+  the binary under that name; `cargo tauri` needs a differently-named binary that only
+  the Rust crate provides, and a symlink shim does not work because cargo prepends the
+  subcommand name. Once `package.json` exists, `npm run tauri` is the command that works
+  both in the container and on a machine with a display.
+- **Use `sh -c` in the container, never `sh -lc`.** The login profile resets `PATH` and
+  hides rust, node and the user-local binaries, which reads exactly like a broken image.
+- **devcontainer features do not exist under `docker compose up`.** They are applied only
+  by the devcontainer CLI. Anything that must work in both places — `git`, `gh` — is
+  installed in `dev.Dockerfile` on purpose. Do not "simplify" it back to a feature.
+- **The repo is `/app` here and `/home/ryan/code/not-like-the-otters` on the host.** Git
+  worktrees record absolute paths in both directions, so a worktree created on one side
+  is broken on the other. This matters at M2: `no-mistakes` creates disposable worktrees,
+  so it must run consistently on one side of that boundary.
+- **`make init` runs on the host, not in here.** It is guarded and will refuse.
+
 ## Architectural shape
 
 Two halves that never import each other, and one seam inside the app.
@@ -186,7 +204,15 @@ small and self-contained enough to port later if the cost outgrows the benefit.
 - Python stays as the governance language, because the harness must not be breakable by
   the app it governs, and every job left in it is text munging.
 - `codegraph` is installed for agent token savings. That justification stands alone and
-  does not depend on any visualisation work.
+  does not depend on any visualisation work. It is indexed and served over MCP; query it
+  before crawling files. Whether it actually earns its keep is still unmeasured — judge
+  that on M1 and say so either way.
+- The container no longer mounts the parent of every sibling project. That mount existed
+  to hold git worktrees and to work around broken ssh; ssh works in the container now,
+  and worktree paths cannot resolve on both sides of the `/app` boundary anyway. When
+  worktrees are genuinely wanted, mount one dedicated directory at the *same absolute
+  path* inside and out — not the parent of a hundred repositories, which handed every
+  agent in here write access to unrelated work.
 - No bespoke daemon. Every piece of state the app needs is already on disk or served by
   a tool with its own daemon. The rule to revisit: build one only when there is state
   that is not on disk.
@@ -226,8 +252,25 @@ finish. Three toolchains make CI and the devcontainer heavier than they look.
 | M2 | `no-mistakes` wired as the outer gate, `make check` as its test/lint step, `boundary-reviewer` as its review step, findings filed as sightings. |
 | M3 | The spec compiler, two tiers, once there is enough real work to know what a spec should have said. |
 
-**Current work:** M0. Nothing in the table above is built yet — the repo is the harness
-and this contract. Start there.
+**Current work: M0, second half.** The environment is done and verified in the container
+— rust 1.97.1, cargo, tauri-cli 2.11.4 (as `tauri`), node 24, gh 2.97.0, codegraph 1.5.0
+indexed, webkit2gtk 4.1, uv-managed Python 3.13, `make check` green. Credentials live in
+the shared `dev-ssh` / `dev-gh` volumes via `make init`.
+
+What is left in M0, in order:
+
+1. `tauri init` — the app does not exist yet. Not one line of Rust or TypeScript is
+   written. Keep the domain trivial; the loop is the point.
+2. Teach `make check` about Rust and TypeScript, so the gate covers all three languages
+   rather than only Python. Until that lands, the gate is green while most of the repo
+   is unchecked, which is worse than a red gate because it looks fine.
+3. A window listing decisions read from `governance/`.
+
+Then M1. Do not start M1 while the gate still ignores two of the three languages.
+
+Also open, small: `main` is still at the scaffold commit and has no upstream; only `dev`
+is pushed. Decide whether M0 lands on `main` through a PR — the answer shapes whether
+`no-mistakes` has a target at M2.
 
 ## Commands
 
