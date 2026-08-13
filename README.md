@@ -32,12 +32,22 @@ resolve it.
 
 ### Container credentials
 
-`~/.ssh` and `~/.config/gh` are **named volumes**, not bind mounts of your host dotfiles.
-The host ssh config is a home-manager symlink into `/nix/store`, which does not resolve
-inside a Debian container, and a bind mount would hand the container every key you own
-rather than the one this project needs.
+`~/.ssh` and `~/.config/gh` in the container are **external Docker volumes**, `dev-ssh`
+and `dev-gh`, shared by every project on the machine rather than scoped to this one.
 
-One-time setup, after the first `make build`:
+They are not bind mounts of your host dotfiles on purpose. The host ssh config is a
+home-manager symlink into `/nix/store`, which does not resolve inside a Debian
+container; and a bind mount would hand the container every key you own rather than the
+one you meant to give it.
+
+Set up once per machine, not once per project:
+
+```bash
+docker volume create dev-ssh
+docker volume create dev-gh
+```
+
+Then, after the first `make build`:
 
 ```bash
 docker compose up -d
@@ -48,12 +58,13 @@ docker compose exec dev gh auth login
 ```
 
 The image ships `/home/dev/.ssh/config` pointing at `id_github`, plus a `known_hosts`
-entry for github.com. Both persist from then on.
+entry for github.com. Every later project reuses both volumes as-is.
 
-Two things to know. A named volume is seeded from the image **only while it is empty**,
-so changing the starter config in `dev.Dockerfile` will not reach a volume that already
-exists — `docker volume rm not-like-the-otters_dev-ssh` first. And `docker compose down
--v` destroys both volumes, which means redoing the two steps above.
+Being external, they survive `docker compose down -v` — removing them takes a deliberate
+`docker volume rm dev-ssh dev-gh`. The one wrinkle: a volume is seeded from the image
+**only while it is empty**, so once credentials are in place, changing the starter config
+in `dev.Dockerfile` will not reach them. Edit the file inside the container, or remove
+the volume and set it up again.
 
 ### Updating tools
 

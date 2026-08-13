@@ -18,11 +18,12 @@ services:
       - root-history:/home/dev/history
       - vscode-server:/home/dev/.vscode-server
 
-      # Credentials the container owns outright — populated once by hand, then kept
-      # across rebuilds. Deliberately NOT bind mounts of ~/.ssh and ~/.config/gh: the
-      # host config is a home-manager symlink into /nix/store, which does not resolve
-      # inside a Debian container, and a bind mount would expose every host key rather
-      # than the one this project uses. See README, "Container credentials".
+      # Shared credential volumes, external so every project reuses the same ones and
+      # `docker compose down -v` cannot destroy them. Deliberately NOT bind mounts of
+      # ~/.ssh and ~/.config/gh: the host ssh config is a home-manager symlink into
+      # /nix/store, which does not resolve inside a Debian container, and a bind mount
+      # would expose every host key rather than the one that is wanted here.
+      # Set up once per machine — see README, "Container credentials".
       - dev-ssh:/home/dev/.ssh
       - dev-gh:/home/dev/.config/gh
 
@@ -46,5 +47,10 @@ services:
 volumes:
   root-history:
   vscode-server:
+
+  # Machine-wide, not project-scoped. Create once with:
+  #   docker volume create dev-ssh && docker volume create dev-gh
   dev-ssh:
+    external: true
   dev-gh:
+    external: true
