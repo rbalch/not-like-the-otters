@@ -5,7 +5,7 @@
   "workspaceFolder": "/app",
   "runServices": ["dev"],
 
-  "forwardPorts": [8000],
+  "forwardPorts": [8010],
 
   "postCreateCommand": "sudo chown -R dev:dev /app /home/dev && uv sync",
   "shutdownAction": "stopCompose",
@@ -93,8 +93,8 @@
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "portsAttributes": {
-    "8000": {
-      "label": "app"
+    "8010": {
+      "label": "vite dev server"
     }
   }
 }

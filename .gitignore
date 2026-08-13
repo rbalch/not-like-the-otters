@@ -48,6 +48,9 @@ secret.pem
 # Logs
 *.log
 
+# codegraph — a tree-sitter index is build output, and it rebuilds itself on watch
+.codegraph/
+
 # Misc
 *.sqlite3
 *.mo

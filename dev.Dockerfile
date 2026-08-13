@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS dev
+FROM debian:trixie-slim AS dev
 
 ENV PYTHONUNBUFFERED=1
 ENV TERM=xterm-256color
@@ -19,11 +19,23 @@ RUN apt update --yes --quiet && apt install --yes --quiet --no-install-recommend
     vim \
     zsh \
     locales \
-    python3-dev \
     openssh-client \
     procps \
     gnupg \
-    lsb-release
+    lsb-release \
+    pkg-config \
+    file
+
+# Tauri v2 Linux build dependencies. The container builds the app; it never displays
+# it — this box is headless (see AGENTS.md, "Working context").
+RUN apt install --yes --quiet --no-install-recommends \
+    libwebkit2gtk-4.1-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    libsoup-3.0-dev \
+    libssl-dev \
+    patchelf
 
 # Fix locale (resolves VSCode remote terminal issues)
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
@@ -40,7 +52,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
     && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
     && apt-get update && apt-get install -y google-cloud-cli
 
-# uv
+# uv — owns the Python toolchain too, so there is no system Python to disagree with it.
 COPY --from=ghcr.io/astral-sh/uv:0.11.6 /uv /uvx /bin/
 
 ARG USERNAME=dev
@@ -64,7 +76,12 @@ WORKDIR /app
 RUN chown -R $USERNAME:$USERNAME /app
 USER $USERNAME
 
-ENV PATH="/app/.venv/bin:$PATH"
+# Every tool below installs under $HOME so it is user-owned and updatable in place
+# without a rebuild. See the update commands in README.md.
+ENV PATH="/app/.venv/bin:/home/dev/.local/bin:/home/dev/.cargo/bin:$PATH"
+
+# Python, managed by uv rather than by the base image.
+RUN uv python install 3.13
 
 # Claude Code CLI — the harness is authored interactively in this container.
 # Uses the official native installer (the npm `install` subcommand no longer
@@ -72,14 +89,25 @@ ENV PATH="/app/.venv/bin:$PATH"
 RUN curl -fsSL https://claude.ai/install.sh | bash \
     && echo 'export PATH="$HOME/.local/bin:$PATH"' >> ${HOME}/.zshrc
 
-ENV PATH="/home/dev/.local/bin:$PATH"
+# Rust — rustup owns ~/.cargo, so `rustup update` works without a rebuild.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path --default-toolchain stable --profile minimal \
+    && echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ${HOME}/.zshrc \
+    && rustup component add rustfmt clippy \
+    && rustc --version && cargo --version
+
+# Node-based CLIs, installed user-local so `npm update -g` needs no sudo.
+# @tauri-apps/cli ships prebuilt binaries — far faster than `cargo install tauri-cli`.
+# codegraph is the pre-indexed code graph agents query over MCP instead of crawling files.
+RUN npm config set prefix "$HOME/.local" \
+    && npm install -g @tauri-apps/cli @colbymchenry/codegraph
 
 # oh-my-zsh + plugins
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
     && git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions \
     && git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
 
-RUN sed -i 's/^plugins=.*/plugins=(git docker node npm zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
+RUN sed -i 's/^plugins=.*/plugins=(git docker node npm rust zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
 
 RUN echo 'alias ll="ls -lah"' >> ~/.zshrc \
     && echo 'alias gemini="GOOGLE_CLOUD_PROJECT= npx @google/gemini-cli"' >> ~/.zshrc \

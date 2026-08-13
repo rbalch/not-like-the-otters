@@ -2,12 +2,12 @@ name: not-like-the-otters
 
 services:
   dev:
-    container_name: not-like-the-otters-dev
+    container_name: not-like-the-otters
     build:
       context: .
       dockerfile: dev.Dockerfile
     ports:
-      - 8000:8000
+      - 8010:8010
     volumes:
       # app
       - ./:/app:cached
@@ -19,12 +19,13 @@ services:
       - vscode-server:/home/dev/.vscode-server
 
       # User config mounts
-      - ~/.ssh:/home/dev/.ssh
+      # - ~/.ssh:/home/dev/.ssh
       - ~/.config/gcloud:/home/dev/.config/gcloud
-      - ~/.gemini:/home/dev/.gemini
-      - ~/.cache/google-vscode-extension:/home/dev/.cache/google-vscode-extension
+      # - ~/.gemini:/home/dev/.gemini
+      # - ~/.cache/google-vscode-extension:/home/dev/.cache/google-vscode-extension
       - ~/.claude:/home/dev/.claude
       - ~/.claude.json:/home/dev/.claude.json
+      - ~/.codex:/home/dev/.codex
       # Nix vault (universal context layer)
       - ~/.nix-vault:/home/dev/.nix-vault
       - /var/run/docker.sock:/var/run/docker.sock
@@ -32,8 +33,8 @@ services:
     tty: true
     env_file:
       - .env
-    environment:
-      GOOGLE_CLOUD_PROJECT: your-gcp-project
+    # environment:
+    #   GOOGLE_CLOUD_PROJECT: your-gcp-project
 
 volumes:
   root-history:

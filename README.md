@@ -10,8 +10,25 @@ Not a product. One developer, one machine, no distribution.
 
 ## Development
 
-All work happens inside the devcontainer. `uv` manages the Python harness; `cargo` and
-`npm` manage the app.
+All work happens inside the devcontainer. `uv` manages the Python harness and its
+Python toolchain; `cargo` and `npm` manage the app.
+
+The box is headless, so the Tauri window cannot open here. Develop the frontend against
+the vite dev server on port 8010 and view it in a browser on your client machine; test
+the Rust core headlessly with `cargo test`. To see the real window, rsync the source to
+a machine with a display and run `cargo tauri dev` there.
+
+Every CLI installs under `$HOME`, so updating one needs no rebuild and no sudo:
+
+```bash
+rustup update                                  # Rust
+npm update -g @tauri-apps/cli @colbymchenry/codegraph
+claude update                                  # Claude Code
+uv self update                                 # uv
+```
+
+Those updates live in the container layer, not a volume — a rebuild resets them to the
+versions pinned in `dev.Dockerfile`.
 
 ```bash
 make check       # the single gate: controls → views --check → governance → tests
