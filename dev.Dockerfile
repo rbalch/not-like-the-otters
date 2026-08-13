@@ -83,6 +83,25 @@ ENV PATH="/app/.venv/bin:/home/dev/.local/bin:/home/dev/.cargo/bin:$PATH"
 # Python, managed by uv rather than by the base image.
 RUN uv python install 3.13
 
+# Credential homes. These are named volumes at run time (see compose.yaml), and Docker
+# seeds a named volume from the image *only while it is empty* — so the directories must
+# exist here with the right ownership and modes, or ssh mounts them root-owned and
+# refuses to read the keys. Editing the starter config below will NOT reach an existing
+# volume; remove the volume to re-seed it.
+RUN mkdir -p /home/dev/.ssh /home/dev/.config/gh \
+    && chmod 700 /home/dev/.ssh \
+    && ssh-keyscan github.com > /home/dev/.ssh/known_hosts 2>/dev/null \
+    && chmod 600 /home/dev/.ssh/known_hosts \
+    && printf '%s\n' \
+        'Host github.com' \
+        '  hostname github.com' \
+        '  user git' \
+        '  identitiesOnly yes' \
+        '  identityFile ~/.ssh/id_github' \
+        '  controlMaster no' \
+        > /home/dev/.ssh/config \
+    && chmod 600 /home/dev/.ssh/config
+
 # Claude Code CLI — the harness is authored interactively in this container.
 # Uses the official native installer (the npm `install` subcommand no longer
 # self-bootstraps the platform binary under npx).

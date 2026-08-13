@@ -30,6 +30,33 @@ cd not-like-the-otters && nix develop -c cargo tauri dev
 Flakes only see git-tracked files, so `git add` a new file before `nix develop` will
 resolve it.
 
+### Container credentials
+
+`~/.ssh` and `~/.config/gh` are **named volumes**, not bind mounts of your host dotfiles.
+The host ssh config is a home-manager symlink into `/nix/store`, which does not resolve
+inside a Debian container, and a bind mount would hand the container every key you own
+rather than the one this project needs.
+
+One-time setup, after the first `make build`:
+
+```bash
+docker compose up -d
+docker compose cp ~/.ssh/<your-github-key> dev:/home/dev/.ssh/id_github
+docker compose exec dev chmod 600 /home/dev/.ssh/id_github
+docker compose exec dev ssh -T git@github.com     # expect "Hi <user>!"
+docker compose exec dev gh auth login
+```
+
+The image ships `/home/dev/.ssh/config` pointing at `id_github`, plus a `known_hosts`
+entry for github.com. Both persist from then on.
+
+Two things to know. A named volume is seeded from the image **only while it is empty**,
+so changing the starter config in `dev.Dockerfile` will not reach a volume that already
+exists — `docker volume rm not-like-the-otters_dev-ssh` first. And `docker compose down
+-v` destroys both volumes, which means redoing the two steps above.
+
+### Updating tools
+
 Every CLI installs under `$HOME`, so updating one needs no rebuild and no sudo:
 
 ```bash
