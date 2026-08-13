@@ -12,6 +12,8 @@ build: ## Build Docker images
 
 # Path to the private key to install as the container's GitHub identity. Only read the
 # first time; afterwards the key lives in the dev-ssh volume and this is ignored.
+# Installed by piping its contents, not `docker compose cp`, which copies a symlink
+# verbatim and lands a dangling link in the volume.
 KEY ?= $(HOME)/.ssh/id_github
 
 init: ## First-run setup: credential volumes, ssh key, gh login, code graph (run on the HOST)
@@ -27,7 +29,8 @@ init: ## First-run setup: credential volumes, ssh key, gh login, code graph (run
 			echo "           pass one: make init KEY=~/.ssh/your-github-key"; \
 			exit 1; \
 		}; \
-		docker compose cp "$(KEY)" dev:/home/dev/.ssh/id_github >/dev/null; \
+		docker compose exec -T dev rm -f /home/dev/.ssh/id_github; \
+		docker compose exec -T dev sh -c 'cat > /home/dev/.ssh/id_github' < "$(KEY)"; \
 		docker compose exec -T dev chmod 600 /home/dev/.ssh/id_github; \
 		echo "ssh key    installed from $(KEY)"; \
 	fi

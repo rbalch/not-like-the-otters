@@ -89,8 +89,7 @@
       "moby": false,
       "dockerDashComposeVersion": "v2"
     },
-    "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "_comment": "git and gh are installed in dev.Dockerfile instead, so they exist under a plain `docker compose up` as well — features are applied only by the devcontainer CLI."
   },
   "portsAttributes": {
     "8010": {

@@ -52,6 +52,17 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
     && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
     && apt-get update && apt-get install -y google-cloud-cli
 
+# GitHub CLI. Installed here rather than via the devcontainer feature so it exists under
+# a plain `docker compose up` too — features are applied only by the devcontainer CLI,
+# and `make init` talks to compose directly.
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y gh \
+    && gh --version
+
 # uv — owns the Python toolchain too, so there is no system Python to disagree with it.
 COPY --from=ghcr.io/astral-sh/uv:0.11.6 /uv /uvx /bin/
 
