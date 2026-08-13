@@ -40,25 +40,19 @@ home-manager symlink into `/nix/store`, which does not resolve inside a Debian
 container; and a bind mount would hand the container every key you own rather than the
 one you meant to give it.
 
-Set up once per machine, not once per project:
+Run this on the host after the first `make build`:
 
 ```bash
-docker volume create dev-ssh
-docker volume create dev-gh
+make init KEY=~/.ssh/your-github-key
 ```
 
-Then, after the first `make build`:
-
-```bash
-docker compose up -d
-docker compose cp ~/.ssh/<your-github-key> dev:/home/dev/.ssh/id_github
-docker compose exec dev chmod 600 /home/dev/.ssh/id_github
-docker compose exec dev ssh -T git@github.com     # expect "Hi <user>!"
-docker compose exec dev gh auth login
-```
+It creates both volumes, installs the key as `id_github`, proves it against GitHub,
+runs `gh auth login` if needed, and builds the code graph. Every step is skipped if it
+is already done, so re-running is safe and `KEY` is only read the first time.
 
 The image ships `/home/dev/.ssh/config` pointing at `id_github`, plus a `known_hosts`
-entry for github.com. Every later project reuses both volumes as-is.
+entry for github.com. Every later project reuses both volumes as-is — on a machine that
+has already been set up, `make init` just confirms everything and indexes the new repo.
 
 Being external, they survive `docker compose down -v` — removing them takes a deliberate
 `docker volume rm dev-ssh dev-gh`. The one wrinkle: a volume is seeded from the image
