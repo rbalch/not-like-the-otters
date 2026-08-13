@@ -11,7 +11,7 @@ services:
     volumes:
       # app
       - ./:/app:cached
-      - ../:/workspace
+      # - ../:/workspace
       - /app/.venv  # Prevents host from overwriting container's venv
 
       # Named volumes for persistent data
