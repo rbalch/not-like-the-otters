@@ -1,10 +1,17 @@
 # not-like-the-otters
 
-<!-- TODO: one paragraph on what this is. -->
+A Tauri desktop app that shows the state of its own development process — the decisions
+that govern this repo, the findings its review loop produces, and which findings are
+close to becoming enforced rules. The app is the smaller half of the project. It exists
+so that an agentic build loop has something real to build, and so that loop's output has
+somewhere to be read.
+
+Not a product. One developer, one machine, no distribution.
 
 ## Development
 
-All work happens inside the devcontainer. `uv` manages dependencies.
+All work happens inside the devcontainer. `uv` manages the Python harness; `cargo` and
+`npm` manage the app.
 
 ```bash
 make check       # the single gate: controls → views --check → governance → tests

@@ -1,8 +1,11 @@
 # not-like-the-otters — agent contract
 
-<!-- TODO: one paragraph. What this project is, and the one sentence that explains
-     why it is built the way it is. An agent reading only this file should know what
-     it is working on. -->
+A Tauri desktop app that shows the state of its own development process: the decisions
+that govern this repo, the findings the review loop produces, and which of those
+findings are close to becoming rules. The app is deliberately the smaller half of the
+project — it exists so the agentic build loop around it has something real to build, and
+so that loop's output has somewhere to be read. When the app and the loop compete for
+effort, the loop wins.
 
 This repo runs a ledger governance harness: architectural rules live as decisions,
 each decision is backed by an executable control, and CI fails on drift. Read
@@ -105,40 +108,126 @@ change was made.
 
 ## Architectural shape
 
-<!-- TODO: the diagram or the two paragraphs that explain how this system is put
-     together, and which seams the controls exist to guard. An agent that does not
-     understand the shape will violate it confidently. Replace the example below. -->
+Two halves that never import each other, and one seam inside the app.
 
 ```
-<layer A>  ──▶  <layer B>  ──▶  <layer C>
+  ┌─ the harness (Python) ───────────┐        ┌─ the app (Rust + TypeScript) ──────┐
+  │                                  │        │                                    │
+  │  governance/  controls/  tests/  │ ─────▶ │   webview (TS)                     │
+  │  src/not_like_the_otters/        │governs │        │                           │
+  │                                  │        │        │ Tauri IPC commands ◀── the│
+  │  emits: RULES.md, registry.json  │        │        ▼   only way across         │
+  │         proposed rules, stubs    │        │   core (Rust)                      │
+  └──────────────────────────────────┘        │        │                           │
+                    ▲                         └────────┼───────────────────────────┘
+                    │                                  │
+                    └──────── on-disk state ◀──────────┘
+                     governance/, docs/ledger-findings.md,
+                     .codegraph/codegraph.db, `no-mistakes axi status`
 ```
+
+**The harness governs the app; the app never governs the harness.** Python reads and
+checks the Rust and TypeScript trees. Nothing under `governance/`, `controls/`, or
+`src/not_like_the_otters/` may import from, or be built by, the app. The point is that a
+refactor inside the app cannot break the thing that polices it. This is the seam most
+worth protecting and the first one a well-meaning change will erode.
+
+**The webview reaches the machine only through Tauri IPC commands.** No file reads, no
+database handles, no shell, no network on the TypeScript side. That surface is a small,
+listable set of typed commands, which is also what makes it the natural place to hang
+contracts and generated tests later.
+
+**The app reads on-disk state; it does not own it.** Decisions, findings, the code graph
+and gate status all belong to tools that write them. The app watches those paths and
+renders them. Anything that mutates governance state goes through the harness CLIs, not
+through the UI, until there is a decision saying otherwise.
 
 ## Always
 
-<!-- TODO: the shape of the design, for orientation. Never a restatement of a DEC-N
-     rule — point at the view instead. Delete these examples. -->
-
-- Keep the dependency direction one way.
-- Put secrets behind the named abstraction, never in a repo file, a log line, or a
-  response payload.
+- Keep the dependency direction one way: harness → app, frontend → IPC → core, app →
+  on-disk state as a reader.
+- Put every crossing between the webview and the machine behind a named Tauri command.
+- Treat generated artifacts as build output: change the source and regenerate.
+- Prefer a query to the code graph over crawling files. Fewer tokens is a project goal,
+  not an optimisation.
 
 ## Never
 
-<!-- TODO: negative space is first-class. What must this project never do? -->
-
 - Never hand-edit a generated file (`governance/views/**`, `governance/registry.json`).
 - Never edit a control to make a failing change pass.
+- Never let app logic drift into the Python package, or harness logic into the Rust
+  crate. If a job seems to need both, say so and stop.
+- Never add a long-lived process. Everything the app needs is on disk or already served
+  by a tool that has its own daemon.
 
 ## Working context (keep this current)
 
-<!-- TODO: this is the section that earns this file's existence — the background an
-     agent cannot derive from the code. Why this project exists, what was tried and
-     rejected, prior art being followed, the stack, known risks, what is out of scope,
-     who the audience is, and what is being worked on right now. Convert relative dates
-     to absolute. Delete a line the moment it stops being true; a stale working-context
-     section is worse than an empty one. -->
+**Why this exists.** The author is testing an agentic development loop — this harness,
+the build/review subagents, spec-first tests, and an external push gate — by running it
+on a real project. The app's subject matter was chosen to be low-stakes on purpose. If
+you find yourself deep in product design, you have drifted.
 
-**Current work:** <!-- TODO -->
+**Audience.** One developer, on one machine. No users, no distribution, no
+multi-tenancy. Do not build for scale that does not exist.
+
+**Stack.** Tauri (Rust core, TypeScript webview) for the app. Python for the harness —
+`uv`, `ruff`, `ty`, `pytest`. Three toolchains in one repo is a known cost, accepted
+because the harness must not share a compiler with the code it polices; the harness is
+small and self-contained enough to port later if the cost outgrows the benefit.
+
+**Prior art in use.**
+- `codegraph` (https://github.com/colbymchenry/codegraph) — tree-sitter index in local
+  SQLite, exposed to agents over MCP. Installed for token and tool-call savings.
+- `no-mistakes` (https://github.com/kunchenguid/no-mistakes) — a local git proxy that
+  runs `intent → rebase → review → test → document → lint → push → pr → ci` in a
+  disposable worktree before forwarding to the real remote. Planned as the outer gate.
+
+**Decided on 2026-08-13, with the reasoning, so it is not relitigated:**
+- Python stays as the governance language, because the harness must not be breakable by
+  the app it governs, and every job left in it is text munging.
+- `codegraph` is installed for agent token savings. That justification stands alone and
+  does not depend on any visualisation work.
+- No bespoke daemon. Every piece of state the app needs is already on disk or served by
+  a tool with its own daemon. The rule to revisit: build one only when there is state
+  that is not on disk.
+- The local reviewer stays even once the gate exists. A gate round-trip costs a full
+  pipeline; a subagent read costs one call. Cheap filter first, expensive judge second.
+- When the gate lands, `boundary-reviewer` becomes the command its `review` step runs, so
+  there is one reviewer with one rule set rather than two with opinions.
+- Gate findings must be filed as sightings in `docs/ledger-findings.md`. Silent auto-fix
+  would starve the rule of three of its evidence.
+
+**Rejected, and why:**
+- Full yaml-to-test generation for everything — it becomes a compiler you maintain
+  instead of use. The plan is two tiers: full generation only for serializable
+  input/output cases, and stub generation elsewhere, where the generator emits a named
+  failing test and a human writes the body. Anything that fits neither is hand-written
+  in `tests/written/` with no ceremony.
+- Moving the review loop wholesale into the gate — it trades cheap iterations for one
+  expensive verdict.
+- Rendering C4 diagrams early. The levels that matter (containers, components) cannot be
+  parsed out of source anyway; they are claims a decision has to make first. Worth doing
+  once boundaries are declared and enforced, not before.
+
+**Out of scope:** packaging, signing, distribution, auto-update, any second user,
+diagram rendering.
+
+**Known risks.** Five interesting sub-projects (app, spec compiler, gate, graph,
+diagrams) and one developer; scope creep is the likeliest failure. A project whose
+subject is its own process invites mushy requirements — keep milestones small enough to
+finish. Three toolchains make CI and the devcontainer heavier than they look.
+
+**Milestones.** M2 feeds M1, so M1 is built first and hand-fed until it is not.
+
+| | |
+|---|---|
+| M0 | Tauri shell. `make check` covers Rust and TS. `codegraph` installed over MCP. One window listing decisions read from `governance/`. |
+| M1 | Sighting fingerprints and the rule-of-three threshold. Proposed rules surfaced in the app; approval dispatches `control-author`. |
+| M2 | `no-mistakes` wired as the outer gate, `make check` as its test/lint step, `boundary-reviewer` as its review step, findings filed as sightings. |
+| M3 | The spec compiler, two tiers, once there is enough real work to know what a spec should have said. |
+
+**Current work:** M0. Nothing in the table above is built yet — the repo is the harness
+and this contract. Start there.
 
 ## Commands
 
