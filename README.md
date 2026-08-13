@@ -15,8 +15,20 @@ Python toolchain; `cargo` and `npm` manage the app.
 
 The box is headless, so the Tauri window cannot open here. Develop the frontend against
 the vite dev server on port 8010 and view it in a browser on your client machine; test
-the Rust core headlessly with `cargo test`. To see the real window, rsync the source to
-a machine with a display and run `cargo tauri dev` there.
+the Rust core headlessly with `cargo test`.
+
+To see the real window, rsync the source to a machine with a display. `flake.nix`
+provides a shell there with the same Rust and Node versions as the container, plus the
+NixOS-specific fixes webkitgtk needs:
+
+```bash
+rsync -a --delete --exclude target --exclude node_modules --exclude .venv \
+  server:/path/to/not-like-the-otters/ ./not-like-the-otters/
+cd not-like-the-otters && nix develop -c cargo tauri dev
+```
+
+Flakes only see git-tracked files, so `git add` a new file before `nix develop` will
+resolve it.
 
 Every CLI installs under `$HOME`, so updating one needs no rebuild and no sudo:
 
