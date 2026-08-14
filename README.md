@@ -95,5 +95,6 @@ fails on any drift between them.
 - **`docs/governance-harness.md`** explains why the harness exists and how to tell
   whether it is earning its keep.
 - **`docs/ledger-findings.md`** is the experiment log.
+- **`docs/milestones/`** is the planned work, one file per milestone.
 
 Change a rule by supersession, never by edit. See the `ledger-ops` skill.

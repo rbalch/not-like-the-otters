@@ -243,34 +243,17 @@ diagrams) and one developer; scope creep is the likeliest failure. A project who
 subject is its own process invites mushy requirements — keep milestones small enough to
 finish. Three toolchains make CI and the devcontainer heavier than they look.
 
-**Milestones.** M2 feeds M1, so M1 is built first and hand-fed until it is not.
+**Planned work lives in `docs/milestones/`, one file each — not in this file.** A roadmap
+here would be spec wearing the costume of context, and it goes stale the first time a
+plan changes. This file describes how the project behaves; that directory describes what
+is next.
 
-| | |
-|---|---|
-| M0 | Tauri shell. `make check` covers Rust and TS. `codegraph` installed over MCP. One window listing decisions read from `governance/`. |
-| M1 | Sighting fingerprints and the rule-of-three threshold. Proposed rules surfaced in the app; approval dispatches `control-author`. |
-| M2 | `no-mistakes` wired as the outer gate, `make check` as its test/lint step, `boundary-reviewer` as its review step, findings filed as sightings. |
-| M3 | The spec compiler, two tiers, once there is enough real work to know what a spec should have said. |
+**Current work: M0.** The environment is built and verified; the app itself does not
+exist yet. Read `docs/milestones/M0-environment-and-shell.md` before starting.
 
-**Current work: M0, second half.** The environment is done and verified in the container
-— rust 1.97.1, cargo, tauri-cli 2.11.4 (as `tauri`), node 24, gh 2.97.0, codegraph 1.5.0
-indexed, webkit2gtk 4.1, uv-managed Python 3.13, `make check` green. Credentials live in
-the shared `dev-ssh` / `dev-gh` volumes via `make init`.
-
-What is left in M0, in order:
-
-1. `tauri init` — the app does not exist yet. Not one line of Rust or TypeScript is
-   written. Keep the domain trivial; the loop is the point.
-2. Teach `make check` about Rust and TypeScript, so the gate covers all three languages
-   rather than only Python. Until that lands, the gate is green while most of the repo
-   is unchecked, which is worse than a red gate because it looks fine.
-3. A window listing decisions read from `governance/`.
-
-Then M1. Do not start M1 while the gate still ignores two of the three languages.
-
-Also open, small: `main` is still at the scaffold commit and has no upstream; only `dev`
-is pushed. Decide whether M0 lands on `main` through a PR — the answer shapes whether
-`no-mistakes` has a target at M2.
+**Open, small:** `main` is still at the scaffold commit and has no upstream; only `dev`
+is pushed. Whether M0 lands on `main` through a PR shapes whether the outer gate has a
+target later.
 
 ## Commands
 
