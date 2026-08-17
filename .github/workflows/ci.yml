@@ -3,13 +3,17 @@ name: CI
 # The same gate as `make check`, in the same order, as separate steps so a red build
 # names which stage failed:
 #
-#   controls      prove the rules bite
+#   controls      prove the rules bite (now: ruff/ty + cargo fmt/clippy + tsc/prettier/oxlint)
 #   views --check prove the generated view is current
 #   governance    prove nothing drifted
-#   test          prove the harness itself works
+#   test          prove the harness itself works (now: pytest + cargo test + vitest)
 #
 # Do not reorder these. Running `governance` before `controls` would report drift in a
 # tree whose rules were never executed.
+#
+# `controls` depends on `lint`, and `lint`/`test` now cover Rust and TypeScript too, so
+# every toolchain they need must be ready before the "Controls" step runs. Hence the
+# Rust/Node/system-library setup steps below, ahead of any `make` target.
 
 on:
   pull_request:
@@ -36,6 +40,42 @@ jobs:
         # --locked fails rather than silently resolving something new, so CI tests the
         # dependency set that was committed.
         run: uv sync --locked
+
+      # Tauri v2 Linux build dependencies. Same package list as `dev.Dockerfile`; without
+      # them `cargo clippy`/`cargo test` fail to link the `tauri` crate at all.
+      - name: Install Tauri Linux system dependencies
+        run: |
+          sudo apt-get update --yes --quiet
+          sudo apt-get install --yes --quiet --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libssl-dev \
+            patchelf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+
+      - name: Fetch cargo dependencies
+        working-directory: src-tauri
+        run: cargo fetch
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install Node dependencies
+        working-directory: app
+        # ci, not install: fails rather than silently resolving something new, so CI
+        # tests the dependency set that was committed (same reasoning as `uv sync --locked`).
+        run: npm ci
 
       - name: Controls
         run: make controls
