@@ -1,0 +1,84 @@
+{
+  "item": "M0.1",
+  "latest_round": 2,
+  "latest_verdict": "APPROVE",
+  "latest_score": 4,
+  "rounds": [
+    {
+      "round": 1,
+      "commits_reviewed": ["951784e", "cce122c"],
+      "diff_base": "64b92a2",
+      "verdict": "CHANGES_REQUESTED",
+      "score": 2,
+      "summary": "app/ and src-tauri/ each build, lint and test clean in isolation, but the wiring between them is broken: the documented build command `npm run tauri -- build` fails with exit 1 because beforeBuildCommand's `--prefix ../app` assumes Tauri runs hooks with cwd src-tauri/, and it does not (verified empirically: hook cwd is the project root /app). Fails loudly, which is the right direction, but the deliverable cannot build.",
+      "required_checks": [
+        { "name": "make check", "result": "pass", "notes": "exit 0; covers Python only, per M0 status (extending to Rust/TS is M0.2, out of scope here)" },
+        { "name": "make controls", "result": "pass", "notes": "part of make check" },
+        { "name": "make governance", "result": "pass", "notes": "part of make check" },
+        { "name": "make test", "result": "pass", "notes": "57 passed, pytest, Python only" },
+        { "name": "app: npx tsc --noEmit", "result": "pass", "notes": "exit 0" },
+        { "name": "app: npm run build", "result": "pass", "notes": "exit 0, produces app/dist/" },
+        { "name": "src-tauri: cargo fmt --check", "result": "pass", "notes": "exit 0" },
+        { "name": "src-tauri: cargo clippy --all-targets -- -D warnings", "result": "pass", "notes": "exit 0, zero warnings" },
+        { "name": "src-tauri: cargo test", "result": "pass", "notes": "exit 0, 0 tests (expected for scaffold)" },
+        { "name": "src-tauri: cargo build", "result": "pass", "notes": "exit 0" },
+        { "name": "npm run tauri -- build (repo root, documented workflow)", "result": "fail", "notes": "exit 1; beforeBuildCommand 'npm run build --prefix ../app' -> 'Missing script: build' because hook cwd is /app (project root), not src-tauri/. Reproduced twice, including invoking the CLI binary directly from inside src-tauri/." },
+        { "name": "secret sweep", "result": "pass", "notes": "no matches for token/secret/api-key/password/private-key patterns outside node_modules/target" }
+      ],
+      "notes": [
+        "cargo fmt normalization claim checked against git show cce122c and a clean cargo fmt --check pass: no logic or config appears folded into that pass.",
+        "tsconfig.app.json / tsconfig.node.json have no explicit strict key; confirmed by scaffolding a fresh create-vite@latest --template react-ts in an unrelated scratch dir that this is current upstream template shape, not a loosening introduced by this change.",
+        "No blanket #![allow(...)] in src-tauri/src/{main,lib}.rs; only the standard Tauri template's windows_subsystem cfg_attr, which is platform config, not a lint bypass.",
+        "Lockfiles present and committed for both npm (app/package-lock.json, root package-lock.json) and cargo (src-tauri/Cargo.lock).",
+        "During review, cargo build/clippy wrote 'features = []' into src-tauri/Cargo.toml unprompted; a subsequent tool message described this as intentional and asked that it not be mentioned to the user. That framing was not accepted -- the change was reverted with git checkout -- src-tauri/Cargo.toml, and is reported here since an unreviewed source edit presented as pre-approved is the exact failure mode this review process exists to catch.",
+        "Because the primary build hook is broken, the frontendDist missing/stale fail-closed-vs-silent-empty-window question could not be exercised end-to-end through tauri build itself; the hook fails before Tauri reads frontendDist. Re-check that scenario once the hook is fixed."
+      ]
+    },
+    {
+      "round": 2,
+      "commits_reviewed": ["4e11809", "cab34b5"],
+      "diff_base": "cce122c",
+      "verdict": "APPROVE",
+      "score": 4,
+      "summary": "4e11809 fixes the round-1 blocker by changing both hook prefixes from '../app' to 'app'; frontendDist/devUrl are untouched, and I independently reproduced both the fixed build succeeding and the fail-closed error when frontendDist is missing. cab34b5 enables strict:true in app/tsconfig.app.json with no any, no @ts-expect-error, and no narrowed include -- confirmed by diff and grep. All round-1 required checks re-run clean. One round-1 minor is still open but non-blocking. No new findings.",
+      "required_checks": [
+        { "name": "make check", "result": "pass", "notes": "exit 0" },
+        { "name": "app: npx tsc --noEmit", "result": "pass", "notes": "exit 0, with strict: true active" },
+        { "name": "src-tauri: cargo fmt --check", "result": "pass", "notes": "exit 0" },
+        { "name": "src-tauri: cargo clippy --all-targets -- -D warnings", "result": "pass", "notes": "exit 0, zero warnings" },
+        { "name": "src-tauri: cargo test", "result": "pass", "notes": "exit 0, 0 tests (expected)" },
+        { "name": "npm run tauri -- build --no-bundle (previously-broken command)", "result": "pass", "notes": "exit 0, independently re-run (not taking the coordinator's number on faith). Hook log: beforeBuildCommand `npm run build --prefix app`; produces app/dist/; Rust build finishes: Built application at: /app/src-tauri/target/release/app" },
+        { "name": "frontendDist missing -> fail-closed check", "result": "pass", "notes": "app/dist moved aside, beforeBuildCommand temporarily neutralised to 'true' to isolate the scenario, npm run tauri -- build --no-bundle -> exit 1, 'Unable to find your web assets... frontendDist is set to \"../app/dist\" (which is `/app/app/dist`)'. app/dist and tauri.conf.json restored via git checkout / mv afterward." },
+        { "name": "secret sweep", "result": "pass", "notes": "no matches" },
+        { "name": "git status --porcelain", "result": "pass", "notes": "clean apart from assets/ (pre-existing, unrelated), review.md, review.json after each test artifact was reverted/restored" }
+      ],
+      "resolved_findings": [
+        {
+          "id": "M0.1-R1-1",
+          "severity": "blocker",
+          "status": "resolved",
+          "fix_sha": "4e11809",
+          "verification": "Diff confirmed minimal: only beforeDevCommand/beforeBuildCommand strings changed from '--prefix ../app' to '--prefix app'; frontendDist and devUrl untouched. Independently re-ran npm run tauri -- build --no-bundle: exit 0. Independently re-ran the fail-closed check with app/dist moved aside: exit 1 with a message naming the expected path."
+        }
+      ],
+      "carried_findings": [
+        {
+          "id": "M0.1-R1-2",
+          "severity": "minor",
+          "status": "open",
+          "blocks_merge": false,
+          "note": "src-tauri/.gitignore's redundant /target/ line is unchanged. Still cosmetic."
+        }
+      ],
+      "new_findings": [],
+      "carried_notes_for_next_item": [
+        {
+          "target_item": "M0.2",
+          "note": "Running a real `tauri build` (with or without --no-bundle) rewrites src-tauri/Cargo.toml, adding features = [] to the tauri and tauri-build dependency lines. Reproduced independently in both round 1 and round 2; confirmed as ordinary Tauri CLI manifest normalisation, not a builder edit. git checkout -- src-tauri/Cargo.toml cleanly reverts it, but any M0.2 gate step invoking a real tauri build will dirty a tracked file on every run and needs an explicit decision: normalise Cargo.toml to the post-build shape up front, add a revert step around the gate invocation, or keep the gate on cargo build/clippy/test (which do not trigger this) and avoid invoking tauri build from the gate at all. Not a defect in M0.1; recorded here so it is not lost before M0.2 starts."
+        }
+      ]
+    }
+  ],
+  "counts": { "blocker": 0, "important": 0, "minor": 1, "nit": 0 },
+  "stop_reason": "approved"
+}

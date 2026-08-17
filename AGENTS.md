@@ -123,6 +123,18 @@ change was made.
   is broken on the other. This matters at M2: `no-mistakes` creates disposable worktrees,
   so it must run consistently on one side of that boundary.
 - **`make init` runs on the host, not in here.** It is guarded and will refuse.
+- **`tauri.conf.json` uses two different base directories, and mixing them up is silent.**
+  Path-valued keys (`frontendDist`, `devUrl`) resolve relative to the config file's own
+  directory, so `../app/dist` is correct. Hook command strings (`beforeDevCommand`,
+  `beforeBuildCommand`) run with cwd at the **project root**, so they take `--prefix app`
+  with no `../`. Measured, not read from docs. `tauri info` echoes back the first kind and
+  tells you nothing about the second — verify hooks by running
+  `npm run tauri -- build --no-bundle` and nothing else.
+- **A real `tauri build` rewrites `src-tauri/Cargo.toml`.** It adds `features = []` to the
+  `tauri` and `tauri-build` dependency lines every run. Ordinary CLI normalisation, not
+  drift and not something an agent did. It will show up as an unstaged diff; `git checkout
+  -- src-tauri/Cargo.toml` clears it. Any gate that runs a real build has to decide what
+  to do about this rather than leaving the tree dirty.
 
 ## Architectural shape
 
