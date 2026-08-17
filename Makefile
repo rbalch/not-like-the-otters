@@ -79,13 +79,20 @@ controls: lint ## Run every fitness control, then lint
 		uv run python "$$c" || exit 1; \
 	done
 
-lint: ## Ruff lint + format check + ty type check
+lint: ## Ruff + ty + cargo fmt/clippy + tsc + prettier + oxlint, across all three languages
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run ty check
+	cd src-tauri && cargo fmt --check
+	cd src-tauri && cargo clippy --all-targets -- -D warnings
+	npm run lint --prefix app
+	npm run typecheck --prefix app
+	npm run format:check --prefix app
 
-test: ## Run the test suite
+test: ## Run the test suite: pytest, cargo test, vitest
 	uv run pytest -q
+	cd src-tauri && cargo test
+	npm run test --prefix app
 
 check: ## The single gate: controls -> views --check -> governance -> tests
 	$(MAKE) controls
