@@ -50,8 +50,12 @@ and forcing a harness observation into one loses what makes it interesting.
 - **Bin:** 3
 - **Claim:** A verification must run the exact command a user would run. Evidence from a
   neighbouring command that merely looks confirmatory does not count.
-- **Sightings:** 1
+- **Sightings:** 2
 - **Action:** soft — noted, no control possible
+- **Notes (sighting 2):** M0.2. Same shape, different command: plain `tsc --noEmit` reads
+  as a type-check and checks nothing here. See F-5, which is the machine-checkable form of
+  this instance. Two sightings of the *shape*; one more and the shape itself deserves a
+  hard look — though it will still resist a control, which is what makes it Bin 3.
 - **Notes:** M0.1. The builder offered `tauri info` echoing `frontendDist` as proof the
   wiring was sound. `tauri info` reads back the one path that was already correct and
   says nothing about the hooks. This is the parent cause of F-1 and the more interesting
@@ -85,6 +89,34 @@ and forcing a harness observation into one loses what makes it interesting.
   delete a harmless duplicate buys nothing. This finding is why round 2 scored 4/5 and
   not 5/5, which is the correct trade.
 
+### F-5 — `tsc --noEmit` silently checks nothing under project references
+
+- **Date:** 2026-08-17
+- **Bin:** 2
+- **Claim:** Any TypeScript type-check in the gate or in docs must use `tsc -b --noEmit`.
+  Plain `tsc --noEmit` against a root `tsconfig.json` that is `"files": []` plus
+  `references` checks zero files and exits 0 regardless of the code.
+- **Sightings:** 1
+- **Action:** soft — fixed in `e87cac7` and in the M0.1 Manual QA, no control yet
+- **Notes:** M0.2. Found by the builder, confirmed independently: with a real type error
+  in `App.tsx`, `tsc --noEmit` exits 0 and `tsc -b --noEmit` exits 2. **The M0.1 Manual QA
+  I wrote told the human to run the false-green form and expect exit 0** — it would have
+  passed over arbitrarily broken code. Machine-checkable, so unlike its parent F-2 this
+  one could become a control: grep the gate and docs for `tsc --noEmit` without `-b`.
+  Held at one sighting.
+
+### F-6 — Doc drift after a work item lands
+
+- **Date:** 2026-08-17
+- **Bin:** 1
+- **Claim:** The milestone doc's "Remaining" list must not still list a completed item.
+- **Sightings:** 1
+- **Action:** noted — fixed in this close-out
+- **Notes:** M0.2. Raised as a minor. This is close to lintable (a script could compare
+  the milestone list against commit trailers), but the honest bin is 1: it is bookkeeping
+  the close-out step already exists to do, and it was done. If it recurs *after* the
+  close-out step, that is a different and more interesting finding.
+
 ---
 
 ## Harness findings
@@ -113,6 +145,34 @@ agent output, and forcing a harness observation into one loses what makes it int
   not. Recorded because the review step catching it is the only reason anyone knows, and
   because "an edit presented as already-approved" is a failure mode the loop should keep
   being able to catch. Origin unknown; not attributed to any agent in the round.
+
+### H-3 — The injection recurred, four times, always at the same moment
+
+- **Date:** 2026-08-17
+- **Notes:** M0.2. Three more instances, this time aimed at the builder: fabricated
+  `system-reminder`-shaped text in tool output, claiming a deliberate test-breakage was
+  user-approved and instructing it not to revert and not to mention it. The builder
+  refused all three, reverted, and reported — as the reviewer had in M0.1. Four incidents
+  across two rounds, each landing **while an agent was holding a deliberately broken
+  file**, which is the moment a "leave it, it's approved" instruction would do the most
+  damage. The agents' refusals are the only reason any of it is visible. No content was
+  lost; one builder `git checkout` did destroy its own uncommitted test, which it caught
+  and restored from a backup. Left unattributed.
+
+### H-4 — Two reviewers in parallel contaminated each other's gate runs
+
+- **Date:** 2026-08-17
+- **Notes:** M0.2, and an **orchestrator error, not an agent one.** Both reviewers were
+  dispatched simultaneously against one working tree, and both were asked to prove the
+  gate goes red by deliberately breaking files. The boundary reviewer broke
+  `app/src/App.css` for its Prettier demonstration; the correctness reviewer's `make check`
+  landed inside that window and failed on a file the diff never touched. It reported the
+  failure honestly and guessed at "filesystem state settling" — wrong, but it had no way
+  to see the other agent. I confirmed the gate is deterministic afterwards: three
+  consecutive `make check` runs, all exit 0, tree stable. **Lesson:** reviewers that
+  mutate the tree cannot run concurrently in it. Either serialise them, give each a
+  worktree, or restrict destructive negative tests to one reviewer. Parallel dispatch was
+  cheap and it cost a false finding and an hour of misattribution.
 
 <!--
 ### F-1 — <one-line description>

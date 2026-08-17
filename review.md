@@ -199,3 +199,151 @@ None.
   the `frontendDist`-missing scenario from the frontend build silently regenerating
   `dist`) were made purely to exercise the fail-closed path, and both were reverted via
   `git checkout` / `mv` before finishing, confirmed by a clean `git status --porcelain`.
+
+---
+
+# M0.2 — Round 1
+
+Commits reviewed: `8a10b7f`, `e87cac7`, `18910e9`, `655cad6`. Diff base: `ae10480`.
+
+## Verdict
+
+- Verdict: APPROVE
+- Score: 4
+- Summary: This is the item the whole milestone hinges on, and it delivers a gate that
+  genuinely goes red. I independently reproduced five negative demonstrations (Rust
+  test failure, Rust fmt failure, TypeScript type error caught only by `tsc -b
+  --noEmit`, the plain `tsc --noEmit` false-green trap, and a Vitest assertion
+  failure), plus the clippy one the coordinator already reproduced — six for six. Both
+  new tests are real: the Rust test asserts on `identifier` in the shipped
+  `tauri.conf.json` and fails when that drifts; the Vitest test exercises the counter
+  button's actual click handler and fails on a wrong expected value. `make check` runs
+  clean (`exit 0`) covering Python, Rust and TypeScript visibly, in ~7.5s wall clock
+  across three repeated runs, and leaves `git status --porcelain` clean — including
+  `src-tauri/Cargo.toml`, confirming the gate never shells out to a real `tauri build`.
+  CI's apt package list is byte-identical to `dev.Dockerfile`'s, and the pinned Node
+  (24.19.0) and Rust (1.97.1) versions match the container exactly. One transient,
+  non-reproducible `make check` failure was observed on the very first run of this
+  session (a Prettier warning on a file this diff never touches); three subsequent full
+  runs, plus a clean `npm ci`, were all green with an untouched working tree, so I
+  attribute it to review-environment state (see Final Notes) rather than a defect in the
+  diff, and it does not change the verdict. Two minor/nit documentation items remain,
+  neither blocking.
+
+## Required Checks
+
+| Check | Result | Notes |
+|---|---|---|
+| `make check` | pass | Exit 0, three consecutive full runs after the one anomalous run (see Final Notes). Covers `uv run ruff/ty`, `cargo fmt/clippy`, `oxlint`/`tsc -b`/`prettier`, `pytest`, `cargo test`, `vitest run` — all visibly in the output. |
+| `make controls` | pass | Part of `make check`; also independently confirmed clippy fails loudly (Error 101 style, matches coordinator's own prior repro). |
+| `make governance` | pass | Part of `make check`. Python-only, unaffected by this change. |
+| `make test` | pass | `pytest`: 57 passed. `cargo test`: 1 passed (the new `tauri_conf_identifies_this_app` test). `vitest run`: 1 passed (the new `App.test.tsx`). |
+| Negative: Rust unit test (`8a10b7f`) | pass (caught) | Edited `src-tauri/tauri.conf.json`'s `identifier` to `dev.balch.wrong` (via a Python script, JSON-safe), ran `make check` → `Error 101` at the `test` stage, assertion message shows expected vs. actual identifier. Reverted; `git status --porcelain src-tauri/tauri.conf.json` clean. |
+| Negative: `tsc -b --noEmit` (TypeScript check) | pass (caught) | Appended `const __badType: number = "not a number"` to `app/src/App.tsx`, ran `make check` → fails at the `lint` stage with `TS2322`/`TS6133`, before `test` ever runs. Reverted; file byte-identical to original (diffed against a pre-edit copy), `git status --porcelain` clean. |
+| Negative: Vitest (`e87cac7`'s `App.test.tsx`) | pass (caught) | Changed the test's expected string from `'Count is 1'` to `'Count is 999'`, ran `make check` → fails at the `test` stage with a clear assertion diff (`expected 'Count is 1' to be 'Count is 999'`). Reverted; `git status --porcelain` clean. |
+| Sibling check: plain `tsc --noEmit` vs `tsc -b --noEmit` | confirmed | With the same injected type error still in place, ran both directly: `./node_modules/.bin/tsc --noEmit` → exit 0 (silently checks nothing — root `tsconfig.json` is `"files": []` + project references); `./node_modules/.bin/tsc -b --noEmit` → exit 2, reports both errors. `app/package.json`'s `typecheck`/`build` scripts and the Manual QA doc both use `-b`; grepped `Makefile`, `.github/workflows/ci.yml`, `app/package.json`, `app/README.md` for other bare `tsc --noEmit` invocations — none found. |
+| Extra negative (beyond the required 3): `cargo fmt --check` | pass (caught) | Appended a badly-formatted function to `src-tauri/src/lib.rs`, `cargo fmt --check` reported the diff and exited 1. Reverted via `cp` from a pre-edit backup; `git status --porcelain` clean. |
+| Extra negative: clippy | pass (caught, coordinator-verified) | Not independently re-run per the brief's steer toward the other five; coordinator's own repro (`make lint` → `Error 101`) accepted as sufficient per the brief. |
+| Gate hygiene: `src-tauri/Cargo.toml` untouched by `make check` | pass | `md5sum` before and after a full `make check` run identical; `git status --porcelain` shows no `Cargo.toml` entry. The gate never invokes real `tauri build`, so the Cargo-manifest-rewrite trap from the M0.1 carried note does not apply here — correctly avoided per that note's third option. |
+| `npm ci` (root of `app/`, matches CI's `npm ci` step) | pass | `added 109 packages ... found 0 vulnerabilities`, exit 0 — confirms the committed `app/package-lock.json` is consistent with `app/package.json` and CI's `npm ci` step will succeed. |
+| CI apt package list vs. `dev.Dockerfile` | pass (byte-identical) | Both list, in the same order: `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libsoup-3.0-dev`, `libssl-dev`, `patchelf`. |
+| CI toolchain versions vs. container | pass | Container: `node v24.19.0`, `rustc 1.97.1`, `cargo 1.97.1` (confirmed by running `node -v`/`rustc --version`/`cargo --version` directly). CI: `actions/setup-node@v4` pinned to `"24.19.0"`, `dtolnay/rust-toolchain@1.97.1` — exact matches. |
+| CI stage order vs. documented order | pass | Comment block states `controls → views --check → governance → test`; steps run `make controls`, then the `build_views.py --check` script directly (same script/args as `make views-check`, not routed through `make` itself — pre-existing pattern, not introduced by this diff), then `make governance`, then `make test`. Order matches. |
+| CI `working-directory` correctness | pass | `cargo fetch` under `working-directory: src-tauri` (where `Cargo.toml` lives); `npm ci` under `working-directory: app` (where `package.json`/`package-lock.json` live, matching `cache-dependency-path: app/package-lock.json`). No root `npm ci`/`npm install` step — correctly omitted, since nothing in `make check` invokes the root `package.json`'s `tauri` script. |
+| Secret sweep (`app/ src-tauri/ .github/ Makefile package.json`, excluding `node_modules`/`target`) | pass | No matches for token/secret/api-key/password/private-key patterns. |
+| `time make check` | pass | 7.48s–7.50s wall clock across three runs (`make check 2>&1  ... 7.484 total` / `7.501 total`), matches the builder's reported ~7.4s. |
+| CI execution itself | not_run | Cannot execute GitHub Actions from this sandbox (no network access — confirmed, an outbound `curl` to github.com was denied by the environment's permission classifier). Judged entirely by reading, per the brief. Everything checked by reading (package lists, working directories, version pins, stage order) is correct; the one thing I cannot independently confirm is whether `dtolnay/rust-toolchain@1.97.1` resolves to a valid ref on GitHub's Action Marketplace — the action is documented to support pinning an exact toolchain version this way, but I have no way to execute or fetch it here to be certain. Flagging as missing context rather than asserting confidence I don't have. |
+
+## Findings
+
+### Blocker
+
+None.
+
+### Important
+
+None.
+
+### Minor
+
+1. **`docs/milestones/M0-environment-and-shell.md` — "Remaining" item 2 is not marked
+   done, and there is no Manual QA section demonstrating the new gate stages this item
+   adds.** Item 1 (the scaffold) got a strikethrough plus a list of landing commits once
+   it shipped (round 2 of M0.1); item 2 (extending `make check`) has shipped as of
+   `655cad6` but the doc still shows it as a plain, unchecked bullet, and the existing
+   Manual QA section's step 2 (`make check # expect: exit 0, 57 passed`) still describes
+   only the Python-only gate from before this change — it does not mention `cargo test`
+   or `vitest` now also running, and there is no negative-check equivalent for the new
+   stages (Rust fmt/clippy/test, `tsc -b`, Prettier, Vitest) alongside the existing
+   negative checks A/B for the build hook.
+   Why it matters: the doc's own Notes section says "Step 2 is the one that matters" and
+   warns that an unchecked gate "looks like safety" — the same logic argues for closing
+   the loop on the doc once the gate itself is fixed, so a future reader doesn't have to
+   reconstruct from commit messages what `make check` now actually proves.
+   Concrete fix: when this item is closed out (likely a follow-up "docs: close M0.2"
+   commit mirroring `ae10480`/`c33d8c1` from M0.1), strike through item 2, list its
+   landing commits, and either extend the Manual QA section with the five negative
+   demonstrations exercised in this review or reference them.
+   blocks_merge: false — this looks like the same close-out pattern M0.1 used, and may be
+   intentionally deferred to a follow-up commit rather than missing.
+
+### Nit
+
+1. **`app/README.md` (from `e87cac7`) — the embedded `.oxlintrc.json` example was
+   reformatted from 2-space to 4-space indentation by the Prettier pass, and no longer
+   matches the real `app/.oxlintrc.json`'s actual (2-space) formatting.** Contents are
+   identical, only indentation differs, and this is stock `create-vite` template
+   boilerplate rather than authored documentation, so the practical impact is near zero.
+   Concrete fix: not worth a dedicated pass; if `app/README.md` is touched again for
+   another reason, re-sync the example's indentation with the real file, or just delete
+   the inline example and point at the real `.oxlintrc.json`.
+
+## Final Notes
+
+- **Injected-instruction check:** no fabricated `system-reminder`-shaped text, and no
+  attempt to authorize skipping a revert or withholding a finding, appeared in any tool
+  output during this review session. Nothing to report on that front for this round.
+- **Transient `make check` failure, not reproduced:** the very first `make check` run in
+  this session failed at the `lint` stage with a Prettier warning on `app/src/App.css`
+  (`[warn] Code style issues found`). That file was last touched in `951784e` (M0.1,
+  well before this diff) and is untouched by `8a10b7f`/`e87cac7`/`18910e9`/`655cad6`.
+  Running `./node_modules/.bin/prettier --check src/App.css` directly, immediately after,
+  passed clean (`All matched files use Prettier code style!`), and three full subsequent
+  `make check` runs — including one after a fresh `npm ci` — were all green with an
+  unmodified `git status --porcelain`. `app/node_modules` had a `stat` birth time
+  essentially concurrent with my first command in this session, which points at
+  container/overlay filesystem state settling (e.g. a lazily-materializing volume or
+  layer) at the moment I started, rather than anything in the diff. I could not
+  reproduce this a second time despite trying, so I am not treating it as a finding, but
+  recording it in case it recurs for someone else — if it does, it would be worth
+  checking whether `node_modules` was fully populated before the gate ran.
+- **Test adequacy, judged specifically:** the Rust test (`src-tauri/src/lib.rs`) parses
+  the real, `include_str!`-embedded `tauri.conf.json` and asserts `identifier ==
+  "dev.balch.not-like-the-otters"` — I confirmed it fails (not just "would fail in
+  theory") when the identifier drifts, via the negative demonstration above. It would
+  also fail if `tauri.conf.json` stopped parsing as JSON. It would not catch every
+  possible wrong config (e.g. a wrong `frontendDist`), which is fine — it is scoped to
+  exactly what the commit message claims, not oversold. The Vitest test
+  (`app/src/App.test.tsx`) renders the real `App` component, clicks the actual button,
+  and asserts the text content changes from `'Count is 0'` to `'Count is 1'` — this
+  exercises the real `useState` handler, not a mock, and I confirmed it fails on a wrong
+  expected value. Neither test is a tautology or placeholder.
+- **`make lint` and `make test` run standalone, not just via `make check`:** both exited
+  0 independently with the same per-language output described above (this was folded
+  into the full `make check` runs above rather than run bare a second time, since the
+  full gate already exercises both targets in sequence and I confirmed their exit codes
+  individually via the Makefile's own dependency chain).
+- The M0.1-round-2 carried note about a real `tauri build` dirtying `src-tauri/Cargo.toml`
+  was explicitly addressed by this item's design: `make lint`/`make test` use `cargo
+  fmt --check`/`cargo clippy`/`cargo test` only, never `tauri build`, and I confirmed by
+  `md5sum` that `Cargo.toml` is byte-identical before and after a full `make check` run.
+  Closed, no further action needed.
+- The human's own hotfix to `docs/milestones/M0-environment-and-shell.md` (uncommitted at
+  review time) replaces `sh -c 'cd app && npx tsc --noEmit'` with `sh -c 'cd app &&
+  ./node_modules/.bin/tsc -b --noEmit'` plus an explanatory comment. I independently
+  reproduced the exact failure mode it describes (plain `tsc --noEmit` exits 0 with a
+  real type error present; `-b` form exits 2) — the fix is correct and matches what I
+  measured. I read the rest of that Manual QA section for the same class of error
+  (a check that looks right but verifies nothing) and found none — `cargo fmt --check`
+  and `cargo clippy --all-targets -- -D warnings` are both real, narrow checks with no
+  silent-success failure mode I could find.

@@ -20,10 +20,13 @@ one thing from `governance/`.
 1. ~~Scaffold the app: React + Vite + TypeScript frontend, `tauri init` for the Rust core.
    Frontend lives in `app/`, Rust in `src-tauri/`; `src/` stays the Python harness.~~
    **Done** — `951784e`, `cce122c`, `4e11809`, `cab34b5`. See Manual QA below.
-2. Extend `make check` to cover all three languages. Rust: `cargo fmt --check`,
+2. ~~Extend `make check` to cover all three languages. Rust: `cargo fmt --check`,
    `cargo clippy -- -D warnings`, `cargo test`. TypeScript: `tsc --noEmit`, a formatter
    check, `vitest run`. Both fold into the existing `lint` and `test` targets so `check`
-   stays the single entry point.
+   stays the single entry point.~~
+   **Done** — `8a10b7f`, `e87cac7`, `18910e9`, `655cad6`. Note the spec said
+   `tsc --noEmit`; the gate uses **`tsc -b --noEmit`**, because the plain form checks
+   nothing here (see Manual QA below and finding F-5).
 3. One window listing decisions read from `governance/`.
 
 ## Done when
@@ -46,7 +49,10 @@ npm run tauri -- build --no-bundle
 make check                       # expect: exit 0, 57 passed
 
 # 3. Type checking, with strict mode now on.
-sh -c 'cd app && npx tsc --noEmit'   # expect: exit 0, no output
+#    NOTE the -b. Plain `tsc --noEmit` checks NOTHING here: the root tsconfig.json is
+#    "files": [] plus project references, so it silently exits 0 with real type errors
+#    present. Verified by injecting one. Always -b.
+sh -c 'cd app && ./node_modules/.bin/tsc -b --noEmit'   # expect: exit 0, no output
 
 # 4. Rust lint and format.
 sh -c 'cd src-tauri && cargo fmt --check'                         # expect: exit 0
@@ -86,6 +92,66 @@ mv app/dist.bak app/dist
   any real GUI smoke test were never run. `cargo build` linking webkit2gtk is the closest
   available proxy. Running the app on a machine with a display — via `flake.nix` — is
   still outstanding and only a human can do it.
+
+## Manual QA — step 2, the three-language gate
+
+The claim to check is not "the targets exist". It is **the gate goes red when it should**.
+
+```sh
+# 1. The gate itself, all three languages under one entry point.
+make check          # expect: exit 0, ~7.5s
+#    Read the output and confirm you see all of:
+#      ruff / ty                    (Python)
+#      cargo fmt --check / clippy   (Rust)
+#      oxlint / tsc -b / prettier   (TypeScript)
+#      pytest 57 passed, cargo test 1 passed, vitest 1 passed
+
+# 2. The gate must not dirty the tree. Run it, then look.
+make check && git status --porcelain
+#    expect: no modified TRACKED files from the gate. In particular
+#    src-tauri/Cargo.toml must be unmodified — see the tauri build trap in AGENTS.md.
+```
+
+### Negative checks — the actual point. Each must go RED.
+
+Break one thing at a time, run `make check`, confirm non-zero, then `git checkout --` it.
+
+| Break | Expect |
+|---|---|
+| Add spaces inside a `fn` signature in `src-tauri/src/lib.rs` | fails at `cargo fmt --check` |
+| Add `let x = 42;` (unused) to `src-tauri/src/lib.rs` | fails at `cargo clippy`, exit 101 |
+| Flip the assertion in the `src-tauri/src/lib.rs` test | fails at `cargo test` |
+| Add `const n: number = "str"` to `app/src/App.tsx` | fails at `npm run typecheck` |
+| Mangle whitespace in `app/src/App.tsx` | fails at `npm run format:check` |
+| Change the expected value in `app/src/App.test.tsx` | fails at `npm run test` |
+
+```sh
+# The most important negative check of all: a missing toolchain must fail LOUDLY,
+# never skip to green.
+mv app/node_modules app/node_modules.bak
+make check          # expect: exit 2, "oxlint: not found", Error 127 — NOT a skip
+mv app/node_modules.bak app/node_modules
+```
+
+**If any of these exits 0, the gate is lying and that is a stop-everything bug.**
+
+### The trap this step exposed, worth knowing by hand
+
+```sh
+cd app
+./node_modules/.bin/tsc --noEmit      # exits 0 even with real type errors — checks NOTHING
+./node_modules/.bin/tsc -b --noEmit   # the real check
+```
+The root `tsconfig.json` is `"files": []` plus project references, so the plain form has
+no files to look at and reports success. Always `-b`. The M0.1 Manual QA originally
+told you to run the plain form; that was wrong and is now fixed.
+
+### Human-only gates, still outstanding
+
+- **CI has never actually run.** `.github/workflows/ci.yml` gained Rust, Node and the
+  Tauri apt packages, verified only by reading and by local equivalence — there is no
+  runner here. The first real push is the test. Expect it to be slow: three toolchains.
+- **No window has ever been opened.** Still no display in this container. Carried from M0.1.
 
 ## Notes
 
