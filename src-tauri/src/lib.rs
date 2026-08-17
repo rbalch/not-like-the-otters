@@ -1,3 +1,21 @@
+mod registry;
+
+use registry::Decision;
+
+/// The webview's only way to learn what the harness has decided. Reads
+/// `governance/registry.json` from a path resolved at compile time (see
+/// `registry::registry_path`), never from the webview, and never mutates
+/// anything — this app only reads governance state.
+///
+/// On any failure — missing file, unreadable file, malformed JSON — this
+/// returns `Err` with a message naming what went wrong, rather than `Ok(vec![])`.
+/// An empty vector is indistinguishable from "no decisions exist" and would be
+/// a false success; see AGENTS.md and the M0.3 brief on this exact hazard.
+#[tauri::command]
+fn list_decisions() -> Result<Vec<Decision>, String> {
+    registry::read_registry(&registry::registry_path()).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -11,6 +29,7 @@ pub fn run() {
             }
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![list_decisions])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
