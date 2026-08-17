@@ -347,3 +347,171 @@ None.
   (a check that looks right but verifies nothing) and found none — `cargo fmt --check`
   and `cargo clippy --all-targets -- -D warnings` are both real, narrow checks with no
   silent-success failure mode I could find.
+
+---
+
+# M0.3 — Round 1
+
+Commits reviewed: `6efebbd`, `c7f7091`. Diff base: `f4a0607`.
+
+## Verdict
+
+- Verdict: APPROVE
+- Score: 4
+- Summary: This closes M0's "Done when" line — `make check` genuinely checks Python, Rust
+  and TypeScript, and the app window lists real decisions read from `governance/`. The
+  IPC contract is sound both ways: `Decision`/`RawDecision` agree field-for-field
+  (`id`, `title`, `status`, `kind`, `superseded_by`), and I confirmed independently — not
+  just by reading the types — that Rust's `Option<String>` always serialises `None` as a
+  present `null` key (never omits it) and that a `serde`-derived struct treats a missing
+  `Option<T>` field on the input side as `None` automatically, so `superseded_by` behaves
+  identically whether the harness emits `null` or omits the key. The failure direction the
+  brief cares most about holds end to end: I reproduced the Rust-layer loud failure
+  (moving `governance/registry.json` aside makes the shipped `real_registry_path_resolves_and_reads`
+  test fail with a named path and OS error), and read `App.tsx` to confirm the frontend
+  error path is genuinely reachable — a discriminated `LoadState` union with no path that
+  ends in "ready, zero rows" when the promise rejected, rendered via `role="alert"` — then
+  independently exercised it in Vitest with a mocked `invoke` rejection asserting the
+  exact message renders. All 7 Rust tests and both Vitest tests are real: I broke one of
+  each (a `registry.rs` assertion, an `App.test.tsx` expected string) and watched them
+  fail for the right reason, then reverted cleanly. `make check` is green (57 pytest / 7
+  cargo / 2 vitest) in 7.62s, materially unchanged from M0.2's ~7.5s. `npm run tauri --
+  build --no-bundle` succeeds; the known `Cargo.toml` `features = []` normalisation
+  reappeared and was reverted, exactly per the documented trap. No secrets found. Two
+  minor, non-blocking findings: the milestone doc's item 3 isn't closed out yet, and three
+  unreferenced Vite-starter asset files remain on disk (confirmed absent from the actual
+  build output). Nothing here needed the boundary reviewer's territory (rules, ACL
+  minimality, the write-path question) — that ground is theirs and already settled at
+  5/5.
+
+## Required Checks
+
+| Check | Result | Notes |
+|---|---|---|
+| `make check` | pass | Exit 0. 57 pytest passed, 7 cargo tests passed, 2 vitest passed — all visible in output. 7.62s wall clock, in line with M0.2's ~7.5s; no material regression. |
+| `make controls` | pass | Part of `make check`. |
+| `make governance` | pass | Part of `make check`. |
+| `make test` | pass | 57 pytest / 7 cargo / 2 vitest, all passed. |
+| `cd src-tauri && cargo test` | pass | Exit 0, 7 tests: `tauri_conf_identifies_this_app` (pre-existing) plus 6 new in `registry.rs`. |
+| `cd app && npx vitest run` | pass | Exit 0, 2 tests. |
+| `cd app && npx tsc -b --noEmit` | pass | Exit 0, strict mode intact, no `any` in touched files. |
+| `npm run tauri -- build --no-bundle` | pass | Exit 0, `Built application at: /app/src-tauri/target/release/app`. `src-tauri/Cargo.toml`'s known `features = []` normalisation reappeared as documented; reverted with `git checkout --`. |
+| Negative: Rust test (`registry.rs::parses_decisions_with_superseded_by_surfaced`) | pass (caught) | Changed `decisions.len(), 2` to `999`, `cargo test` failed with a clear assertion diff at that line. Reverted; `git status --porcelain` clean. |
+| Negative: Vitest (`App.test.tsx`) | pass (caught) | Changed an expected `screen.getByText('DEC-0')` to `'DEC-999'`, `vitest run` failed (`waitFor` timeout, 1 failed/1 passed). Reverted; `git status --porcelain` clean. |
+| Rust-layer fail-loud demonstration | pass (fails loudly) | Moved `governance/registry.json` aside, ran `cargo test real_registry_path_resolves_and_reads -- --nocapture` → panics with `could not read /app/src-tauri/../governance/registry.json: No such file or directory (os error 2)`. Restored; `git status --porcelain governance/registry.json` clean. |
+| Frontend error-path reachability | pass (verified by reading `App.tsx` + the shipped Vitest test) | `LoadState` is an exhaustive discriminated union (`loading`/`error`/`ready`); the `.catch` branch always calls `setState({status:'error', ...})`, never silently resolves to an empty `ready` list. `App.test.tsx`'s second test mocks `invoke` to reject with a plain string (matching how Tauri actually rejects a `Result::Err(String)`, not an `Error` object) and asserts the exact string appears in a `role="alert"` element, and that no `role="table"` renders. |
+| IPC field-name/nullability agreement | pass (verified, not just read) | Confirmed `src-tauri/src/registry.rs`'s `Decision` and `app/src/lib/decisions.ts`'s `RawDecision` agree on all 5 fields and on `superseded_by`'s snake_case name. Wrote and ran a small standalone Rust/serde check confirming a `serde`-derived struct treats a **missing** `Option<T>` JSON key as `None` automatically (no `#[serde(default)]` needed) — so the contract tolerates the harness either omitting `superseded_by` or emitting `null`; both parse identically on the Rust side. Read (not executed, no display) that Tauri v2 serialises command return values via the type's own `Serialize` impl with no automatic camelCase transform on outputs (unlike command *arguments*, which are auto-camelCased) — `Decision` has no `#[serde(rename_all)]`, so the wire JSON is `superseded_by`, matching `RawDecision.superseded_by` exactly. Cross-checked against the real `governance/registry.json` on disk, which has the field present as `null` for its one decision — confirms the assumption is grounded in the actual generated shape, not just an assumption about it. |
+| Real registry shape vs. `Registry`/`Decision` structs | pass | `governance/registry.json` has top-level `controls` (ignored by `Registry`, which only declares `decisions`) and `decisions: [{id, kind, status, superseded_by, title}]` — matches the struct exactly, including `superseded_by: null` present (not absent). |
+| Secret sweep (`app/src src-tauri/src src-tauri/*.json app/package.json`) | pass | No matches for token/secret/api-key/password/private-key patterns. |
+| `git status --porcelain` after full review | clean (on reviewed files) | Only pre-existing, out-of-scope human edits to `README.md`/`compose.yaml`/`dev.Dockerfile` and the untracked `assets/` dir remain — all explicitly "leave completely alone" per the brief, untouched by this review. |
+
+## Findings
+
+### Blocker
+
+None.
+
+### Important
+
+None.
+
+### Minor
+
+1. **`docs/milestones/M0-environment-and-shell.md` — item 3 ("One window listing
+   decisions read from `governance/`") is not marked done, and there is no Manual QA
+   section covering this item's behaviour.**
+   Issue: `6efebbd`/`c7f7091` fully implement item 3 and the "Done when" line
+   ("`make check` exits 0 ... and the app window lists the decisions on disk") is now
+   satisfiable, but the doc still shows item 3 as a plain, unchecked bullet, `Status:`
+   still reads "in progress. The environment half is done; the app does not exist yet,"
+   and there is no Manual QA step 3 alongside steps 1 and 2 — nothing documents how to
+   independently reproduce the negative demonstrations this review exercised (moving
+   `registry.json` aside, a malformed-JSON case, the frontend error-path check) or the
+   `capabilities/default.json` webview/machine seam widening the step-1 doc explicitly
+   flagged as "the moment ... is either kept or lost."
+   Why it matters: this is the same close-out gap flagged as a minor finding in
+   M0.2-R1 (which itself followed the pattern M0.1 used in `ae10480`/`c33d8c1`), and the
+   doc's own M0.2 Notes section argues an unchecked gate/milestone "looks like safety" —
+   the same logic applies to leaving the milestone's own status stale once its last item
+   ships.
+   Concrete fix: in a follow-up "docs: close M0" commit, strike through item 3 with its
+   landing commits, update `Status:`, and add a Manual QA step 3 documenting at minimum:
+   the missing/malformed/superseded-decision negative checks reproduced in this review,
+   and the still-outstanding human-only gate (opening the real window via `flake.nix` on
+   a machine with a display — see below).
+   blocks_merge: false — matches the established close-out pattern for this milestone;
+   likely intentionally deferred to a follow-up commit.
+
+2. **`app/src/assets/react.svg`, `app/src/assets/vite.svg`, `app/src/assets/hero.png` are
+   dead files, unreferenced by any source after `c7f7091` replaced the Vite starter UI.**
+   Issue: `git grep` for all three filenames across `app/src` and `app/index.html` finds
+   zero references; confirmed the actual `npm run build` output (`app/dist/assets/`)
+   contains no trace of them, so there's no runtime or bundle-size cost — this is pure
+   source-tree clutter, not a behavioural defect. The builder's commit message and prior
+   session apparently flagged this and left it as-is.
+   Why it matters: low — three unreferenced files in `app/src/assets/` don't affect
+   correctness, but they're stale scaffold debris that will confuse a future reader
+   wondering if something still depends on them.
+   Concrete fix: `git rm app/src/assets/react.svg app/src/assets/vite.svg
+   app/src/assets/hero.png` in a small follow-up, or fold the deletion into the M0
+   close-out commit above.
+   blocks_merge: false
+
+### Nit
+
+None.
+
+## Final Notes
+
+- **Path-resolution design (`registry_path()` / `CARGO_MANIFEST_DIR`), judged against
+  the host/container split in `AGENTS.md` and `flake.nix`.** The compile-time path
+  resolves correctly for the workflow `flake.nix` itself documents: its header comment
+  says to `rsync` the whole tree (excluding only `target`/`node_modules`/`.venv` — so
+  `governance/` is included) to the host and then run `cargo tauri dev` (or `cargo build`)
+  *in that copy*, which means `CARGO_MANIFEST_DIR` gets baked in fresh at the host
+  compile, pointing at `<host-copy>/src-tauri`, sibling to `<host-copy>/governance/` —
+  the same relative layout as in the container. This holds only because the documented
+  workflow always **recompiles** on the target machine; it would break silently if a
+  container-built binary were ever copied to and run on the host without rebuilding
+  (`CARGO_MANIFEST_DIR` would still point at `/app/src-tauri`, which doesn't exist there,
+  so the binary would fail loudly with a "no such file" error at the same location I
+  reproduced above — still fails closed, not open, just not the workflow that's
+  documented). Given `AGENTS.md`'s explicit "Out of scope: packaging, signing,
+  distribution" and single-developer/single-machine framing, and that the failure mode
+  even in the untested path is loud rather than silent, I judge this correct as scoped,
+  not a finding. It remains genuinely unverified end to end — nobody has run the real
+  window via `flake.nix` yet, which the doc already tracks as an outstanding human-only
+  gate carried from M0.1/M0.2, unaffected by this change.
+- **Test adequacy, judged specifically, not just counted.** All 6 new Rust tests in
+  `registry.rs` constrain real behaviour: two are pure/disk-free parse tests (good
+  JSON, malformed JSON), one checks a missing required field is a loud parse error (not a
+  silent default), two exercise the disk-touching `read_registry` (missing file,
+  malformed file on disk), and `real_registry_path_resolves_and_reads` is a genuine
+  integration check against the real, checked-in `governance/registry.json` — I confirmed
+  it is not a tautology by breaking the thing it depends on (moved the real file aside)
+  and watching it fail with a specific, named error. The two Vitest tests are equally
+  real: the first renders the actual `App` component against a mocked `invoke` (the
+  correct seam to mock — the Tauri IPC boundary, not the component under test) and
+  asserts on rendered text including the superseded-decision phrasing; the second does
+  the same for the rejection path. Neither test patches `App` itself or a piece of the
+  unit under test.
+- **`superseded_by` rendering.** `DecisionRow` renders `superseded by DEC-2` as a plain
+  string in its own column rather than, say, styling the row or downgrading `status`'s
+  display — a decision that is `status: "superseded"` still literally shows the word
+  "superseded" in the Status column plus the extra column, so nothing here can be
+  misread as "accepted." Not a finding, just confirming the exact hazard the commit
+  message calls out (a superseded decision reading as plainly accepted) doesn't occur.
+- **Injected-instruction check:** no fabricated `system-reminder`-shaped text, and no
+  attempt to authorize skipping a revert, weakening a check, or withholding a finding,
+  appeared in any tool output during this review session.
+- **Housekeeping during review:** all file mutations made to reproduce negative
+  demonstrations (editing `registry.rs`'s assertion, editing `App.test.tsx`'s expected
+  string, moving `governance/registry.json` aside, letting `cargo build` rewrite
+  `Cargo.toml`) were reverted via `git checkout --` or restored via `mv` before finishing;
+  final `git status --porcelain` shows only the pre-existing, out-of-scope human edits to
+  `README.md`/`compose.yaml`/`dev.Dockerfile` and the untracked `assets/` directory, which
+  the brief explicitly said to leave alone and which I did not touch.
+- Did not re-derive or duplicate the boundary reviewer's territory: rule compliance,
+  capability minimality (`allow-list-decisions` only, no write permission granted), the
+  webview/core seam, and control evasion were all already approved at 5/5 by
+  `boundary-reviewer` and are out of scope for this review by design.

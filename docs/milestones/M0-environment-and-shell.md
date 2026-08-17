@@ -1,6 +1,7 @@
 # M0 — Environment and app shell
 
-**Status:** in progress. The environment half is done; the app does not exist yet.
+**Status:** complete, pending one human gate — nobody has opened the window yet. See the
+visual gate in "Manual QA — step 3".
 
 ## Goal
 
@@ -27,7 +28,10 @@ one thing from `governance/`.
    **Done** — `8a10b7f`, `e87cac7`, `18910e9`, `655cad6`. Note the spec said
    `tsc --noEmit`; the gate uses **`tsc -b --noEmit`**, because the plain form checks
    nothing here (see Manual QA below and finding F-5).
-3. One window listing decisions read from `governance/`.
+3. ~~One window listing decisions read from `governance/`.~~
+   **Done** — `6efebbd`, `c7f7091`. Reads the generated `registry.json`, not the decision
+   markdown: parsing frontmatter in Rust would reimplement the harness's parser inside the
+   app, which `AGENTS.md` forbids.
 
 ## Done when
 
@@ -152,6 +156,66 @@ told you to run the plain form; that was wrong and is now fixed.
   Tauri apt packages, verified only by reading and by local equivalence — there is no
   runner here. The first real push is the test. Expect it to be slow: three toolchains.
 - **No window has ever been opened.** Still no display in this container. Carried from M0.1.
+
+## Manual QA — step 3, the decisions window
+
+```sh
+# 1. The gate, now covering the new command and component.
+make check     # expect: exit 0 — 57 pytest, 7 cargo, 2 vitest
+
+# 2. It still bundles.
+npm run tauri -- build --no-bundle    # expect: exit 0
+git checkout -- src-tauri/Cargo.toml  # expected churn, see the trap in AGENTS.md
+```
+
+### The property that matters: it must fail loudly, never show an empty list
+
+An empty table is indistinguishable from "there are no decisions". That is a false
+success, and it is the specific thing this item was built to avoid.
+
+```sh
+mv governance/registry.json /tmp/registry.json.bak
+sh -c 'cd src-tauri && cargo test real_registry_path_resolves_and_reads'
+#    expect: FAILED, naming the exact path —
+#    "could not read /app/src-tauri/../governance/registry.json: No such file or directory"
+mv /tmp/registry.json.bak governance/registry.json
+```
+
+In the window, that same error renders in a `role="alert"` element. There is no code path
+from a rejected `invoke` to a rendered empty list — the load state is a union, and failure
+lands in the error arm.
+
+### The visual gate — yours, and nobody has done it
+
+**No window has ever been opened.** No display exists in this container, so every agent in
+this loop verified through compilers and tests only. This step is real work, not a
+formality, and it is the first time anyone sees whether this thing renders.
+
+Per `flake.nix`: rsync the tree to the host (it excludes `target`, `node_modules`, `.venv`
+— `governance/` is included, and must be), then **build and run in that copy**:
+
+```sh
+nix develop
+npm run tauri dev
+```
+
+**Rebuild on the machine you run on.** The Rust side resolves `governance/registry.json`
+from `CARGO_MANIFEST_DIR`, fixed at compile time. Recompiling on the host bakes in the
+host path and everything lines up. Copying a container-built binary to the host and
+running it will fail — loudly, naming `/app/src-tauri/...`, which does not exist there.
+That is finding F-7, and it is a deliberate trade, not a bug.
+
+What to look for:
+- One row: **DEC-0**, "No generated file is named AGENTS.md", status `accepted`.
+- A superseded decision, when one exists, must visibly show what superseded it. There are
+  none yet, so this is untested by reality — the Vitest suite covers it with a fixture.
+- Move `governance/registry.json` aside, reload: **an error naming the missing file**, not
+  a blank table. If you get a blank table, that is a stop-everything bug.
+
+### Still open after M0
+
+- **CI has never run.** `.github/workflows/ci.yml` gained three toolchains, verified by
+  reading and local equivalence only. The first push is the test.
 
 ## Notes
 

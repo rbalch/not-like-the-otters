@@ -110,12 +110,46 @@ and forcing a harness observation into one loses what makes it interesting.
 - **Date:** 2026-08-17
 - **Bin:** 1
 - **Claim:** The milestone doc's "Remaining" list must not still list a completed item.
-- **Sightings:** 1
-- **Action:** noted — fixed in this close-out
+- **Sightings:** 2
+- **Action:** noted — fixed in each close-out
+- **Notes (sighting 2):** M0.3. Raised again, by a different reviewer, on the same
+  milestone doc. Both times the close-out step fixed it immediately afterwards. This is
+  the interesting case flagged below: it recurs because reviewers read the tree *before*
+  close-out runs, so it is arguably an artifact of review ordering rather than a real
+  defect. If it appears a third time, the right response is probably to fix the ordering
+  or teach reviewers to skip it — **not** to author a control. Noting that now, before the
+  rule of three creates pressure to promote it.
 - **Notes:** M0.2. Raised as a minor. This is close to lintable (a script could compare
   the milestone list against commit trailers), but the honest bin is 1: it is bookkeeping
   the close-out step already exists to do, and it was done. If it recurs *after* the
   close-out step, that is a different and more interesting finding.
+
+### F-7 — Compile-time path assumes the binary runs where it was built
+
+- **Date:** 2026-08-17
+- **Bin:** 3
+- **Claim:** none statable as a rule today. "A runtime path must not be fixed at compile
+  time" would be wrong here — it is the correct call for this app.
+- **Sightings:** 1
+- **Action:** noted, deliberately not a control
+- **Notes:** M0.3. `registry_path()` is `env!("CARGO_MANIFEST_DIR")` + `../governance/`.
+  Correct as scoped: `AGENTS.md` puts packaging and distribution out of scope, and
+  `flake.nix`'s documented workflow rsyncs the tree and **recompiles on the host**, so the
+  path is baked fresh with the same relative layout. It breaks only if a container-built
+  binary is copied to the host without rebuilding — and even then it fails loudly. Logged
+  not as a defect but as a **dated assumption**: the day packaging comes into scope, this
+  silently stops being right. That is the sighting worth having on record.
+
+### F-8 — Dead scaffold assets left behind
+
+- **Date:** 2026-08-17
+- **Bin:** 1
+- **Claim:** No file under `app/src/assets/` may be unreferenced by any import.
+- **Sightings:** 1
+- **Action:** fixed in this close-out — deleted
+- **Notes:** M0.3. Three Vite starter files went unreferenced when `App.tsx` was replaced.
+  Bin 1: a bundler or a dead-code linter catches this class, and reaching for the ledger
+  here would be using a decision to do a linter's job.
 
 ---
 
@@ -173,6 +207,27 @@ agent output, and forcing a harness observation into one loses what makes it int
   mutate the tree cannot run concurrently in it. Either serialise them, give each a
   worktree, or restrict destructive negative tests to one reviewer. Parallel dispatch was
   cheap and it cost a false finding and an hour of misattribution.
+
+### H-5 — Serialising the reviewers worked
+
+- **Date:** 2026-08-17
+- **Notes:** M0.3, the fix for H-4 applied. Both reviewers ran one at a time against the
+  tree, each told explicitly that it was alone and that an unexplained failure was
+  therefore real rather than environmental. No phantom findings, and both negative
+  demonstrations reverted cleanly. Cost: wall-clock, since the round took two sequential
+  reviews instead of one parallel pair. Worth it — a false finding costs more to chase
+  than a review costs to run. **Keep reviewers serial whenever they mutate the tree.**
+
+### H-6 — The rule of three under pressure, and holding
+
+- **Date:** 2026-08-17
+- **Notes:** M0 close. Three findings now sit at two sightings (F-2, F-6) or are crisp
+  enough to look promotable (F-5, F-3), and the pull to author a control was real —
+  a control would have felt like progress. None were promoted, because none reached three
+  sightings, and F-6's second sighting turned out to be an artifact of *review ordering*
+  rather than a recurring defect. That is the case the rule of three exists to catch: a
+  plausible rule, twice-sighted, that would have fired on correct code forever. Recording
+  it as evidence the gate on graduation is load-bearing rather than ceremonial.
 
 <!--
 ### F-1 — <one-line description>
