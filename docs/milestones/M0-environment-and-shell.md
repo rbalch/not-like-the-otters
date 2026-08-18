@@ -1,7 +1,8 @@
 # M0 — Environment and app shell
 
-**Status:** complete, pending one human gate — nobody has opened the window yet. See the
-visual gate in "Manual QA — step 3".
+**Status:** complete. Both human gates closed on 2026-08-18 — CI ran green on its first
+execution (200s, PR #1), and `cargo tauri dev` compiles and opens the window on a host
+with a display.
 
 ## Goal
 
@@ -212,10 +213,16 @@ What to look for:
 - Move `governance/registry.json` aside, reload: **an error naming the missing file**, not
   a blank table. If you get a blank table, that is a stop-everything bug.
 
-### Still open after M0
+### Closed after M0
 
-- **CI has never run.** `.github/workflows/ci.yml` gained three toolchains, verified by
-  reading and local equivalence only. The first push is the test.
+- **CI ran green on its first execution** — PR #1, 200s, no fixes needed. The apt list
+  was copied verbatim from `dev.Dockerfile` and the toolchains pinned to the container's
+  versions, which is why it worked first time.
+- **The window opens.** `cargo tauri dev` compiles and comes up on a host with a display.
+
+Worth a glance next time someone is in front of it: that the row reads `DEC-0` /
+`accepted`, and that moving `governance/registry.json` aside produces a named error
+rather than a blank table.
 
 ## Notes
 
