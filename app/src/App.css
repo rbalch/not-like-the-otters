@@ -1,0 +1,23 @@
+#decisions {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  text-align: left;
+}
+
+#decisions table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+#decisions th,
+#decisions td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+#decisions .error {
+  color: #b3261e;
+}

@@ -1,0 +1,12 @@
+{
+  "name": "not-like-the-otters",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Root package.json so `npm run tauri` resolves the Tauri CLI; the frontend lives in app/.",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4"
+  }
+}

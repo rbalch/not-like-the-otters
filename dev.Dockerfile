@@ -11,9 +11,9 @@ RUN apt update --yes --quiet && apt install --yes --quiet --no-install-recommend
     ca-certificates \
     curl \
     wget \
-	jq \
-	rsync \
-	tmux \
+    jq \
+    rsync \
+    tmux \
     git \
     sudo \
     vim \
@@ -56,10 +56,10 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
 # a plain `docker compose up` too — features are applied only by the devcontainer CLI,
 # and `make init` talks to compose directly.
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-        > /etc/apt/sources.list.d/github-cli.list \
+    > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y gh \
     && gh --version
 
@@ -104,13 +104,13 @@ RUN mkdir -p /home/dev/.ssh /home/dev/.config/gh \
     && ssh-keyscan github.com > /home/dev/.ssh/known_hosts 2>/dev/null \
     && chmod 600 /home/dev/.ssh/known_hosts \
     && printf '%s\n' \
-        'Host github.com' \
-        '  hostname github.com' \
-        '  user git' \
-        '  identitiesOnly yes' \
-        '  identityFile ~/.ssh/id_github' \
-        '  controlMaster no' \
-        > /home/dev/.ssh/config \
+    'Host github.com' \
+    '  hostname github.com' \
+    '  user git' \
+    '  identitiesOnly yes' \
+    '  identityFile ~/.ssh/id_github' \
+    '  controlMaster no' \
+    > /home/dev/.ssh/config \
     && chmod 600 /home/dev/.ssh/config
 
 # Claude Code CLI — the harness is authored interactively in this container.
@@ -129,8 +129,13 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 # Node-based CLIs, installed user-local so `npm update -g` needs no sudo.
 # @tauri-apps/cli ships prebuilt binaries — far faster than `cargo install tauri-cli`.
 # codegraph is the pre-indexed code graph agents query over MCP instead of crawling files.
+# @openai/codex is the Codex CLI.
+# pi the coding cli
 RUN npm config set prefix "$HOME/.local" \
-    && npm install -g @tauri-apps/cli @colbymchenry/codegraph
+    && npm install -g @tauri-apps/cli @colbymchenry/codegraph @openai/codex @earendil-works/pi-coding-agent
+
+# no-mistakes installer
+RUN curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh
 
 # oh-my-zsh + plugins
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
