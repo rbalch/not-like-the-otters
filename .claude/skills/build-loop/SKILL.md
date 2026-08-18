@@ -47,7 +47,22 @@ Read:
 - **`AGENTS.md`** — architecture and the contract.
 - **`docs/ledger-findings.md`** — specifically the **sighting counts**. You cannot apply
   the rule of three without knowing what is already sitting at one or two.
-- **`review.md` and `review.json`** at the repo root, if a prior round left them.
+
+**Then clear the working papers — this is a new work item:**
+
+```sh
+rm -f review.md review.json
+```
+
+They are burner, scoped to one work item. Both are gitignored. A stale pair from the
+*previous* work item is worse than none: the reviewer inherits findings about code that
+is no longer under review, and you spend a round chasing a resolved bug.
+
+**Only at the start of a work item, never between rounds.** Within one work item the pair
+accumulates — round 2 marks round 1's findings resolved with fix SHAs, and the exit
+criteria in section 7 checks that history is intact. Deleting mid-loop destroys it. If you
+are *resuming* an interrupted work item rather than starting a new one, skip the `rm` and
+read what is there.
 
 Extract before briefing: exact scope, explicit **non**-scope (later milestones, other
 repos), acceptance criteria as runnable checks, environment facts a fresh agent cannot
