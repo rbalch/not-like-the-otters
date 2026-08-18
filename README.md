@@ -17,15 +17,45 @@ The box is headless, so the Tauri window cannot open here. Develop the frontend 
 the vite dev server on port 8010 and view it in a browser on your client machine; test
 the Rust core headlessly with `cargo test`.
 
-To see the real window, rsync the source to a machine with a display. `flake.nix`
-provides a shell there with the same Rust and Node versions as the container, plus the
-NixOS-specific fixes webkitgtk needs:
+### Seeing the real window
+
+`flake.nix` provides a shell on a machine with a display, carrying the same Rust and
+Node versions as the container plus the NixOS-specific fixes webkitgtk needs.
+
+From a clone:
+
+```bash
+git clone git@github.com:rbalch/not-like-the-otters.git
+cd not-like-the-otters
+git checkout dev          # main is pre-M0; there is no app on it yet
+nix develop
+npm install --prefix app
+cargo tauri dev
+```
+
+Or rsync instead, which carries uncommitted work a clone cannot:
 
 ```bash
 rsync -a --delete --exclude target --exclude node_modules --exclude .venv \
   server:/path/to/not-like-the-otters/ ./not-like-the-otters/
-cd not-like-the-otters && nix develop -c cargo tauri dev
+cd not-like-the-otters
+nix develop
+npm install --prefix app
+cargo tauri dev
 ```
+
+Three things that bite, in the order you hit them:
+
+- **`npm install --prefix app` is required either way.** `node_modules` is neither
+  committed nor rsynced, and `beforeDevCommand` runs `npm run dev --prefix app`. Skip it
+  and the build dies at the hook, looking exactly like a broken path.
+- **Here the CLI is `cargo tauri`, not `tauri`.** The flake installs the `cargo-tauri`
+  nixpkg; the container installs the npm one, which ships the binary under the other
+  name. The habit does not carry across.
+- **Build on the machine you run on.** The Rust core resolves `governance/registry.json`
+  from `CARGO_MANIFEST_DIR`, fixed at compile time. Recompiling on the host bakes in the
+  host path. Copying a container-built binary over will fail — loudly, naming a `/app`
+  path that does not exist there.
 
 Flakes only see git-tracked files, so `git add` a new file before `nix develop` will
 resolve it.
