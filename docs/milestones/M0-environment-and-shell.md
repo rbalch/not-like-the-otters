@@ -186,6 +186,13 @@ In the window, that same error renders in a `role="alert"` element. There is no 
 from a rejected `invoke` to a rendered empty list — the load state is a union, and failure
 lands in the error arm.
 
+To see it live: move the file aside, then reload the window and watch the error appear.
+
+**Reload is right-click → Reload, not `Ctrl+R`.** Tauri binds no reload shortcut by
+default and webkit2gtk on Linux has none of its own, so the WebKit context menu is the
+only way in unless someone registers a global shortcut. `Ctrl+R` does nothing and looks
+like a hung window.
+
 ### The visual gate — yours, and nobody has done it
 
 **No window has ever been opened.** No display exists in this container, so every agent in
