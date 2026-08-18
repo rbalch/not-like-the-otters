@@ -1,8 +1,8 @@
 # M0 — Environment and app shell
 
-**Status:** complete. Both human gates closed on 2026-08-18 — CI ran green on its first
-execution (200s, PR #1), and `cargo tauri dev` compiles and opens the window on a host
-with a display.
+**Status:** complete, and verified by hand. Both human gates closed on 2026-08-18 — CI ran
+green on its first execution (200s, PR #1), and on a host with a display the window renders
+`DEC-0` and fails closed with a named error when the registry is missing.
 
 ## Goal
 
@@ -227,9 +227,16 @@ What to look for:
   versions, which is why it worked first time.
 - **The window opens.** `cargo tauri dev` compiles and comes up on a host with a display.
 
-The window renders and the decision text is on screen — confirmed by eye, 2026-08-18.
-Still unexercised by hand: that moving `governance/registry.json` aside produces a named
-error rather than a blank table. The Rust and Vitest suites both cover that path.
+**Fully verified by hand on 2026-08-18, on a host with a display:**
+
+- The window renders and `DEC-0` is on screen with its text.
+- Moving `governance/registry.json` aside and reloading shows a red error naming the
+  missing file — **not** a blank table. Restoring the file and reloading brings the row
+  back.
+
+That second one is the property this item was built around: an empty list would have made
+"something broke" and "there are no decisions" the same picture. It fails closed, and a
+human has now seen it do so.
 
 ## Notes
 
