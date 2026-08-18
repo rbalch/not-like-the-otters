@@ -1,8 +1,8 @@
 # M0 — Environment and app shell
 
-**Status:** complete. Both human gates closed on 2026-08-18 — CI ran green on its first
-execution (200s, PR #1), and `cargo tauri dev` compiles and opens the window on a host
-with a display.
+**Status:** complete, and verified by hand. Both human gates closed on 2026-08-18 — CI ran
+green on its first execution (200s, PR #1), and on a host with a display the window renders
+`DEC-0` and fails closed with a named error when the registry is missing.
 
 ## Goal
 
@@ -186,6 +186,13 @@ In the window, that same error renders in a `role="alert"` element. There is no 
 from a rejected `invoke` to a rendered empty list — the load state is a union, and failure
 lands in the error arm.
 
+To see it live: move the file aside, then reload the window and watch the error appear.
+
+**Reload is right-click → Reload, not `Ctrl+R`.** Tauri binds no reload shortcut by
+default and webkit2gtk on Linux has none of its own, so the WebKit context menu is the
+only way in unless someone registers a global shortcut. `Ctrl+R` does nothing and looks
+like a hung window.
+
 ### The visual gate — yours, and nobody has done it
 
 **No window has ever been opened.** No display exists in this container, so every agent in
@@ -220,9 +227,16 @@ What to look for:
   versions, which is why it worked first time.
 - **The window opens.** `cargo tauri dev` compiles and comes up on a host with a display.
 
-Worth a glance next time someone is in front of it: that the row reads `DEC-0` /
-`accepted`, and that moving `governance/registry.json` aside produces a named error
-rather than a blank table.
+**Fully verified by hand on 2026-08-18, on a host with a display:**
+
+- The window renders and `DEC-0` is on screen with its text.
+- Moving `governance/registry.json` aside and reloading shows a red error naming the
+  missing file — **not** a blank table. Restoring the file and reloading brings the row
+  back.
+
+That second one is the property this item was built around: an empty list would have made
+"something broke" and "there are no decisions" the same picture. It fails closed, and a
+human has now seen it do so.
 
 ## Notes
 

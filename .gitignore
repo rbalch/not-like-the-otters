@@ -54,6 +54,12 @@ secret.pem
 # Claude Code — project settings are shared; local overrides are not
 .claude/settings.local.json
 
+# Build-loop working papers. The reviewer rewrites these fresh each round, and the
+# durable record is docs/ledger-findings.md — triaged findings, not raw reviews.
+# Kept on disk so the loop can read the previous round; never committed.
+review.md
+review.json
+
 # Misc
 *.sqlite3
 *.mo
