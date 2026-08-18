@@ -220,9 +220,9 @@ What to look for:
   versions, which is why it worked first time.
 - **The window opens.** `cargo tauri dev` compiles and comes up on a host with a display.
 
-Worth a glance next time someone is in front of it: that the row reads `DEC-0` /
-`accepted`, and that moving `governance/registry.json` aside produces a named error
-rather than a blank table.
+The window renders and the decision text is on screen — confirmed by eye, 2026-08-18.
+Still unexercised by hand: that moving `governance/registry.json` aside produces a named
+error rather than a blank table. The Rust and Vitest suites both cover that path.
 
 ## Notes
 
