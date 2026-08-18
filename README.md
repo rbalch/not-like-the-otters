@@ -66,7 +66,7 @@ Every CLI installs under `$HOME`, so updating one needs no rebuild and no sudo:
 
 ```bash
 rustup update                                  # Rust
-npm update -g @tauri-apps/cli @colbymchenry/codegraph
+npm update -g @tauri-apps/cli @colbymchenry/codegraph @openai/codex
 claude update                                  # Claude Code
 uv self update                                 # uv
 ```
