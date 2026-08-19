@@ -151,6 +151,126 @@ and forcing a harness observation into one loses what makes it interesting.
   Bin 1: a bundler or a dead-code linter catches this class, and reaching for the ledger
   here would be using a decision to do a linter's job.
 
+### F-9 — A borrowed lint config names rules its linter does not implement
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** Every rule named in a lint config this repo adopts must be implemented by the
+  linter that actually runs it, and must be set to a severity that fails the build.
+  Adopting a config on the strength of reading it is not adoption.
+- **Sightings:** 1
+- **Action:** soft — noted, no control yet. Enforcement rerouted to a fitness control.
+- **Notes:** M2.1, found before any builder was dispatched. Classical's
+  `_adherence.oxlintrc.json` carries three real rules — no raw hex, no raw `px`, no
+  non-system font — and all three are expressed as `no-restricted-syntax` with regex AST
+  selectors. **oxlint 1.78 does not implement `no-restricted-syntax` at all**; the config
+  does not merely under-enforce, it fails to parse: `Rule 'no-restricted-syntax' not found
+  in plugin 'eslint'`. The other two rules parse but ship with empty `forbid: []` /
+  `patterns: []`, so they are no-ops by construction. The milestone doc had predicted a
+  *weaker* version of this — that the rules were `"warn"` and warnings do not fail a build
+  — and promoting them to `"error"` would have fixed nothing. Same family as F-5: a check
+  that reads as enforcement and enforces zero.
+  Two things make this Bin 2 rather than Bin 1. oxlint failed **closed** here, which is
+  the good case and is why it was caught in minutes; but nothing in the gate would have
+  noticed a config sitting in the tree that was never wired into a command at all. And the
+  claim generalises past linters to any borrowed policy artifact.
+  Related and worth recording: **Classical's own `styles.css` would fail Classical's own
+  adherence rules** — it is full of raw `px` (`h1 { font-size: 42px }`). A config whose
+  own source cannot pass it is a sign the rules were authored for consumers and never run
+  against the system. This is why M2.2's control is scoped to `.tsx` and leaves CSS to the
+  token file, which is also exactly what M2's "Done when" asked for.
+
+### F-10 — One webfont request silently collapses distinct weights into one file
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** Vendored font files for distinct declared weights must be distinct files, and
+  each must carry the `OS/2.usWeightClass` its `@font-face` rule claims.
+- **Sightings:** 1
+- **Action:** soft — caught by the builder before it landed, no control yet
+- **Notes:** M2.1. A combined Google Fonts request
+  (`family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;600`) returns the **same**
+  woff2 URL for both weights of a family, because Google serves a shared variable-font
+  instance. Fetching per-weight returns four genuinely distinct files. The builder found
+  this itself and worked around it correctly.
+  Logged because of the **failure direction**, which is the worst available: had it not
+  been caught, four files would exist, every `@font-face` would resolve, the build would
+  succeed, every gate stage would pass, and the semibold headings the design specifies
+  would silently render at regular weight. Nothing anywhere would go red. Crisply
+  machine-checkable — parse `usWeightClass` from each vendored face and compare against
+  the `font-weight` its `@font-face` declares — which is what makes it Bin 2 and not
+  taste. Held at one sighting.
+
+### F-5a — `prettier --check` reports success over an empty file set
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Sightings:** counted under **F-5** as its second sighting — same defect, second tool
+- **Claim:** F-5's, generalised past `tsc`: a command used as verification must be shown
+  to examine a non-zero number of files. A tool reporting success is not evidence it ran.
+- **Action:** soft — kept out of the M2.1 Manual QA, which now explains why
+- **Notes:** M2.1 close-out, found while running my own Manual QA steps before shipping
+  them. `npx prettier --check src/classical.css`, aimed straight at a file listed in
+  `.prettierignore`, prints `All matched files use Prettier code style!` and exits 0 — it
+  matched nothing and reported that as a pass. I had nearly written it into the Manual QA
+  as a positive check, which is the F-5 mistake exactly repeated: **the M0.1 Manual QA
+  shipped a false-green command that would have passed over arbitrarily broken code.**
+  Caught this time only because F-5 turned "run your own QA steps" into a habit — which is
+  the ledger doing the one thing it exists to do, on a finding from a previous milestone.
+  Filed under F-5 rather than as a new finding. It is the same defect — a check exiting 0
+  having inspected zero files — and padding a sighting count with a second instance of one
+  bug is how the rule of three gets gamed. F-5 therefore stands at **two** sightings: one
+  in `tsc`, one in `prettier`. **A third should graduate it**, and the control is already
+  obvious: scan the gate and the docs for verification commands that can silently match an
+  empty set.
+
+### F-11 — "Vendored" as grounds for removing a file from gate surface
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** A file may be exempted from a gate tool only as a single named path carrying
+  an inline rationale. A directory, a glob, or a bare path with no stated reason is not an
+  exemption, it is an opt-out.
+- **Sightings:** 1
+- **Action:** soft — the instance was judged legitimate and kept. Logged as a watch.
+- **Notes:** M2.1. The builder added `src/classical.css` to `app/.prettierignore` so the
+  vendored token file stays byte-identical to its upstream source and a future re-sync can
+  diff cleanly. The boundary reviewer did not take the rationale on trust: it removed the
+  entry, ran `prettier --write`, measured a 516-line reformat, and restored both files.
+  So the justification is real, and the exemption is narrow, named, commented, and touches
+  only formatting — oxlint and `tsc -b` do not process `.css` regardless.
+  **Approved, and logged anyway.** M2's own text says "everything ingested is gate
+  surface," and this is a knowing exception to it. The finding is not this instance but the
+  word: "vendored" is precisely the justification that gets reached for a second and third
+  time, at steadily lower quality. The reviewer raised it as a candidate sighting itself,
+  which is the harness working. Watch for a second exemption justified as vendored —
+  especially a glob, or one with no inline reason, or one reaching past formatting into
+  lint or typecheck.
+
+### F-12 — A doc asserting measured facts about assets that were later replaced
+
+- **Date:** 2026-08-18
+- **Bin:** 3
+- **Claim:** none worth stating as a rule. The checkable form — "every dimension or format
+  claim a doc makes about a tracked binary must match the file" — is real but so narrow it
+  would be ceremony, and it would not have caught this case anyway.
+- **Sightings:** 1
+- **Action:** noted, deliberately not a control. Doc corrected in this close-out.
+- **Notes:** M2. The milestone described `assets/brand/otter-icon.png` as 1024x1024 RGBA,
+  73.7% transparent, mean opaque colour `rgb(255,255,255)`, 31 KB — a white silhouette
+  needing a dark plate composited under it. The file on disk was **992x1068 RGB with no
+  alpha channel at all**, 628 KB: a black otter mark on a white plate, photographed inside
+  a grey mockup surround. The measurements were honest when written; the asset was replaced
+  afterwards and the prose was not. The doc also asserted the otter portraits were pixel
+  art on a ~209x209 grid needing nearest-neighbour scaling at integer factors — measured,
+  they carry ~47k unique colours and show no block grid at any factor, so the constraint
+  was guarding a property the files never had.
+  Bin 3 because the interesting part is not machine-checkable: the doc was *more* credible
+  for containing precise numbers, and precision is what made it persuasive enough to act
+  on. A builder handed that section would have composited a plate under an image that
+  needed cropping instead. The defence is measuring assets at the point of use rather than
+  trusting a prior measurement, which is a habit, not a rule.
+
 ---
 
 ## Harness findings
@@ -228,6 +348,39 @@ agent output, and forcing a harness observation into one loses what makes it int
   rather than a recurring defect. That is the case the rule of three exists to catch: a
   plausible rule, twice-sighted, that would have fired on correct code forever. Recording
   it as evidence the gate on graduation is load-bearing rather than ceremonial.
+
+### H-7 — Testing the spec's assumptions before dispatching, and it paid twice
+
+- **Date:** 2026-08-18
+- **Notes:** M2.1. The orchestrator ran the milestone's own claims against reality before
+  briefing anyone: executed the borrowed lint config through oxlint (F-9), and measured the
+  brand assets rather than reading their description (F-12). Both claims were wrong, and
+  both would have been discovered by a builder mid-item, when the cost of changing
+  direction is highest and the pull to make the doc's plan work anyway is strongest.
+  The M2 doc is unusually careful — it explicitly warns about the `warn`-versus-`error`
+  trap in the adherence config — and it was **still** wrong about that config, in the same
+  direction, just further along than it guessed. Being well written is not what makes a
+  spec true. Cost: roughly fifteen minutes of measurement before the first dispatch.
+  **Reusable form:** before briefing, run the spec's external dependencies rather than
+  reading them — execute the borrowed config, measure the binary, call the API once.
+  A spec is a hypothesis about the world, and the loop has no other step that tests it.
+
+### H-8 — The reviewers earned their cost differently, and neither was redundant
+
+- **Date:** 2026-08-18
+- **Notes:** M2.1. Both returned APPROVE 5/5 with zero findings, which looks on its face
+  like a round that did not need reviewing. It is worth recording why that reading is
+  wrong. Each was pointed at the round's one real risk and each **verified by execution
+  rather than by reading**: the boundary reviewer proved the `.prettierignore` rationale by
+  deleting the entry, running the formatter, and measuring the 516-line reformat before
+  restoring; the correctness reviewer installed `fontTools` in a throwaway venv and parsed
+  `OS/2.usWeightClass` and the `glyf` tables out of all four woff2 files to prove the
+  semibold faces were not duplicated regulars (F-10).
+  Neither answer was available by inspection, and the second is the one that mattered —
+  had the weights been duplicated, every stage of the gate would still have been green.
+  An approval that came from running something is a different object from an approval that
+  came from reading something, even when the verdict and the score are identical. Recorded
+  because a run of clean rounds is exactly when the loop starts to feel like ceremony.
 
 <!--
 ### F-1 — <one-line description>

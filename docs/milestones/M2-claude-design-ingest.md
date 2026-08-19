@@ -1,7 +1,16 @@
 # M2 — Ingesting a Claude Design
 
-**Status:** not started. A spike — the deliverable is a decision plus the smallest real
+**Status:** in progress. A spike — the deliverable is a decision plus the smallest real
 proof, not a finished port.
+
+| item | state |
+|---|---|
+| M2.1 tier 1 — tokens, vendored fonts, window on Classical | **done** (`4c8942a`, `ac2505c`) |
+| M2.2 adherence enforcement — fitness control + decision | next |
+| M2.3 port one component (`table` → `.tsx`) with a test | not started |
+| M2.4 otters into the app, green one as brand mark | not started |
+| M2.5 app icon — crop, plate, `tauri icon` | not started |
+| M2.6 re-sync procedure and the tier-3 fork point | not started |
 
 ## Goal
 
@@ -64,6 +73,33 @@ That is a false success, and this milestone does not land until a deliberate raw
 a `.tsx` turns `make check` red. Promote the rules to `error`, or keep them at `warn`
 and say plainly in the doc that nothing is enforced. Do not leave it ambiguous.
 
+> **Measured, 2026-08-18 — it is worse than the above, and the fix is elsewhere.**
+> The paragraph was right about the direction and wrong about how far it goes. All three
+> real rules in `_adherence.oxlintrc.json` are expressed as `no-restricted-syntax` with
+> regex AST selectors, and **oxlint 1.78 does not implement that rule at all.** The config
+> does not under-enforce; it does not load:
+>
+> ```
+> $ oxlint -c _adherence.oxlintrc.json probe.tsx
+> Failed to parse oxlint configuration file.
+>   x Rule 'no-restricted-syntax' not found in plugin 'eslint'
+> ```
+>
+> The remaining two rules (`react/forbid-elements`, `no-restricted-imports`) do parse, but
+> ship with empty `forbid: []` / `patterns: []` — no-ops by construction. So promoting
+> everything to `"error"` would have changed nothing. See ledger finding **F-9**.
+>
+> Note also that **Classical's own `styles.css` would fail Classical's own rules** — it is
+> full of raw `px` (`h1 { font-size: 42px }`). A no-raw-px rule applied to CSS would fire
+> on the design system itself.
+>
+> **Enforcement is therefore rerouted to a fitness control** (`controls/fitness/`) with its
+> own decision and pragma, which is this repo's native mechanism and, as the section title
+> says, the actual thesis of the project pointed at a new target. It is scoped to `.tsx`
+> and leaves CSS to the token file — which is both the only self-consistent scoping and
+> exactly what "Done when" already asked for. `_adherence.oxlintrc.json` is kept as a
+> vendored reference artifact, not wired into the gate.
+
 ## Constraints that are already known
 
 - **Fonts must be vendored.** Cormorant Garamond and Lora have to ship as local files.
@@ -99,6 +135,18 @@ resampling turns the blocks to mush and destroys the entire look. The visible bl
 suggests a native grid near 209×209, so 1254 is likely a 6× upscale — if the smaller
 original still exists it is the better source.
 
+> **Measured, 2026-08-18 — the premise is wrong, and the constraint can be dropped.**
+> `otter-green.png` carries ~47,000 unique colours across 1254×1254, and mean intra-block
+> deviation *rises monotonically* with every candidate factor (f=2: 2.94, f=3: 4.04,
+> f=6: 7.48, f=33: 19.46). A genuine 6× nearest-neighbour upscale would read ~0.00 at
+> f=6. There is **no block grid at any factor**: these are continuous-tone renders that
+> *depict* pixel art, not pixel art. Mean horizontal run length is 1.15 px.
+>
+> So there is no native grid to preserve and no smaller original to recover, and smooth
+> resampling is the *correct* filter here rather than the forbidden one. The 50% copies in
+> `assets/brand/resized/` (1254→627) are clean and are the right source for the app.
+> See ledger finding **F-12**.
+
 3.6 MB across the pair is far more than a 128–256 px display needs, and git keeps every
 version forever. Downscale before the first commit.
 
@@ -113,41 +161,56 @@ re-add it with M1.
 
 The portrait is not the app icon: a detailed pixel-art face at 32 px is brown mush.
 
-### The app icon — `assets/brand/otter-icon.png`
+### The app icon
 
-A simplified mark, 1024×1024 RGBA, 31 KB. Format is exactly what `tauri icon` wants
-(squared, transparent, ≥1024). Measured composition:
+**This section was rewritten 2026-08-18.** Everything below the rule is measured from the
+files actually on disk. The original text described a 1024×1024 RGBA white-on-transparent
+silhouette needing a dark `#201f1d` plate composited under it. **No such file exists.** It
+was an honest measurement of an asset that was later replaced, and acting on it would have
+produced a plate under an image whose actual problem is framing. See ledger finding
+**F-12**, and note the general lesson: measure the asset at the point of use.
 
-| | |
+---
+
+Two candidate sources exist, and neither is ready as-is:
+
+| file | measured |
 |---|---|
-| fully transparent | 73.7% |
-| fully opaque | 25.7% |
-| mean colour of every opaque pixel | `rgb(255,255,255)` |
+| `otter-icon.png` | 992×1068, **RGB, no alpha channel**, 628 KB |
+| `otter-icon-1024.png` | 1024×1024 RGBA, but **93% opaque** |
 
-**It is a pure white silhouette on transparency, and that cannot ship as-is.** White on
-transparent is invisible against a light dock, a white taskbar, or Finder. Roughly half of
-the places an app icon appears are light.
+Both are the same artwork: a black otter mark on a white rounded plate, sitting inside a
+grey mockup surround (`rgb(78,78,75)`). They are screenshots *of* an icon, not icon
+assets. `otter-icon-1024.png` is square and RGBA as `tauri icon` requires, but its
+transparency is only thin letterbox strips at the left and right edges — the grey mockup
+frame is baked in as opaque pixels.
 
-`tauri icon` cannot fix this. Its only background option is `--ios-color` / the manifest's
-`bg_color`, and the help is explicit that it applies to the iOS icon. There is no desktop
-equivalent — `.ico`, `.icns` and the Linux PNGs are generated straight from the source
-alpha, so a white-on-transparent input produces white-on-transparent output.
+**The real defect is framing, not colour.** The otter mark occupies just **481×554** of the
+1024×1024 frame; the rest is grey border and white plate margin. Rendered at true size and
+magnified back up, the difference is decisive:
 
-So the plate has to be composited **before** `tauri icon` runs, producing an opaque
-1024×1024 source. Classical supplies the colour:
+- **as-is at 32 px** — the grey frame eats the outer ring and the otter collapses to a
+  featureless crescent. At 16 px it is unusable.
+- **cropped tight to the mark** — head, eye, whiskers and body curl all read at 32 px. At
+  16 px detail is gone but it stays a distinctive silhouette, which is normal for 16.
 
-- `#201f1d` — the ink. White reads cleanly on it, and it matches the otters' black hoodie
-  and dark code rain. **Preferred.**
-- `#b68235` — the gold accent. Also legible, louder, less consistent with the pair.
-
-Keep the bare white-on-transparent original. It is the correct asset for monochrome
-contexts — the manifest's `android_monochrome` slot, or a macOS template icon — where a
-flat silhouette is exactly what is wanted. Two files, two jobs:
+So no re-export is needed. The fix is a crop, and the measured numbers are:
 
 ```
-assets/brand/otter-icon.png          white on transparent — monochrome source, keep
-assets/brand/otter-icon-plate.png    composited on #201f1d — what tauri icon consumes
+source  assets/brand/otter-icon-1024.png
+crop    620×620 at offset (218, 178)      # mark bbox 288..768 × 212..765, +12% margin
+scale   to 1024×1024
+plate   #f3f2f2  (Classical --color-bg)
 ```
+
+**The plate colour inverts from the original plan.** That plan specified `#201f1d`
+because it assumed a *white* mark. This mark is black, so it needs a light ground. Classical's
+`--color-bg` `#f3f2f2` is the default; `#b68235` gold is the louder alternative.
+
+Only then does `tauri icon` run, on the composited opaque 1024×1024 result. Its only
+background option is `--ios-color` / the manifest `bg_color`, which applies to the iOS icon
+only — `.ico`, `.icns` and the Linux PNGs come straight from the source, so any plate has
+to exist in the input.
 
 Verify at real size, not at 1024. The check is whether the mark still reads at 32 px and
 16 px, which is the size that actually decides whether an icon works.
@@ -183,3 +246,96 @@ lesson and leaves the rest to be pulled when something needs them.
 `/design-sync` is not installed in this container. The `DesignSync` tool's own docs
 describe driving it with that skill. Everything above is reachable through the raw read
 methods, but confirm whether the skill is wanted before assuming the manual path.
+
+**Rechecked 2026-08-18: still not installed.** The available skills are `design` (canvas
+authoring — a different thing) plus this repo's own three. The `DesignSync` *tool* works:
+`list_projects` returns Classical, `list_files` returns 36 paths, `get_file` reads them.
+The manual read-method path is the path, and it was enough for M2.1.
+
+One practical consequence worth recording, because it shapes every remaining work item:
+**the `builder` agent has no `DesignSync` tool** — its tools are Read, Write, Edit, Grep,
+Glob and Bash. The orchestrator must fetch design files and stage them on disk before
+dispatching. Stage them **outside the repo** (the session scratchpad), not in a dot-dir
+under `app/`, or they land in the tree and become gate surface themselves.
+
+## Manual QA — M2.1 (tier 1: tokens and vendored fonts)
+
+Run from `/app`. Every command below was run and passed at `ac2505c`.
+
+```sh
+make check ; echo "EXIT=$?"                       # expect EXIT=0
+```
+
+**The fonts are local and the app never phones home.** This is the acceptance criterion,
+so check it rather than trusting the build log:
+
+```sh
+npm run build --prefix app
+grep -rniE 'fonts\.(googleapis|gstatic)\.com' app/dist ; echo "EXIT=$?"
+```
+Expect **EXIT=1** — grep found nothing. Any other result means a remote font reference
+survived into the bundle and the app needs a network to render correctly.
+
+```sh
+ls -la app/src/assets/fonts/                      # four .woff2, ~21-23 KB each
+md5sum app/src/assets/fonts/*.woff2 | awk '{print $1}' | sort -u | wc -l
+```
+Expect **4**. Fewer means duplicate weights got vendored — see finding F-10, the failure
+that passes every check while rendering headings at the wrong weight.
+
+**What to look at with your own eyes.** Launch the app:
+
+```sh
+npm run tauri dev
+```
+
+The decisions window should be unmistakably Classical, not the old purple scaffold:
+
+- warm off-white ground (`#f3f2f2`), near-black text (`#201f1d`) — no white background,
+  no purple anywhere
+- the "Governance decisions" heading in **Cormorant Garamond semibold** — a high-contrast
+  serif with fine hairlines. If it looks like your OS UI font, the `@font-face` family
+  string failed to match and it fell back to `system-ui` silently.
+- table body text in **Lora** — a softer, sturdier serif, clearly different from the
+  heading face
+- hairline dividers under the table rows, and the window content centred in a column
+
+Two cheap negative checks:
+
+```sh
+# 1. break the token file's link and the window should lose all Classical styling
+mv app/src/classical.css /tmp/ && npm run build --prefix app ; echo "EXIT=$?"
+# expect a NON-zero exit: the import in main.tsx now resolves to nothing
+mv /tmp/classical.css app/src/                    # put it back
+
+# 2. confirm the vendored CSS is unformatted — Prettier is deliberately ignoring it, and
+#    if that exemption ever lapses the file gets reflowed and the re-sync diff is lost
+grep -c "^\.plate{filter:sepia" app/src/classical.css   # expect 1
+```
+
+That `grep` is the real check: `.plate{filter:sepia(...)` is a compact one-liner straight
+from upstream, and Prettier would explode it across several lines. Expect **1**. A **0**
+means the file got reformatted and byte-identity with source is gone.
+
+**Do not check this with `prettier --check` instead.** Pointed at an ignored file it prints
+
+```
+$ npx prettier --check src/classical.css
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+which is Prettier reporting success over an empty file set — it matched nothing, because
+`.prettierignore` excludes it. Exactly the shape of ledger finding F-5, where
+`tsc --noEmit` exits 0 having type-checked zero files. A command that says "all fine"
+while examining nothing is the failure mode this milestone is about.
+
+The stronger fidelity check needs the upstream source, which means re-fetching
+`styles.css` from Classical through `DesignSync` and diffing it from `:root {` onward
+against `app/src/classical.css`. That is the tier-1 re-sync procedure itself, and M2.6
+writes it down properly. Verified once at `ac2505c`: zero differences below the font
+block.
+
+**Human-only gates left:** none for M2.1. The window rendering must be seen on a machine
+with a display — the container has no compositor — but `npm run tauri dev` on the host is
+the whole check.
