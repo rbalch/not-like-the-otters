@@ -120,7 +120,7 @@ change was made.
   installed in `dev.Dockerfile` on purpose. Do not "simplify" it back to a feature.
 - **The repo is `/app` here and `/home/ryan/code/not-like-the-otters` on the host.** Git
   worktrees record absolute paths in both directions, so a worktree created on one side
-  is broken on the other. This matters at M2: `no-mistakes` creates disposable worktrees,
+  is broken on the other. This matters at M5: `no-mistakes` creates disposable worktrees,
   so it must run consistently on one side of that boundary.
 - **`make init` runs on the host, not in here.** It is guarded and will refuse.
 - **`tauri.conf.json` uses two different base directories, and mixing them up is silent.**
