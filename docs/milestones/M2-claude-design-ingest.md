@@ -7,7 +7,7 @@ proof, not a finished port.
 |---|---|
 | M2.1 tier 1 — tokens, vendored fonts, window on Classical | **done** (`4c8942a`, `ac2505c`) |
 | M2.2 adherence enforcement — DEC-1 + fitness control | **done** (`762566e`…`10d2f0e`) |
-| M2.3 port one component (`table` → `.tsx`) with a test | not started |
+| M2.3 port one component (`table` → `.tsx`) with a test | **done** (`bd2a3df`…`6d24cac`) |
 | M2.4 otters into the app, green one as brand mark | not started |
 | M2.5 app icon — crop, plate, `tauri icon` | not started |
 | M2.6 re-sync procedure and the tier-3 fork point | not started |
@@ -415,3 +415,83 @@ tree today: `href="#eee"` in a `.tsx` string would misfire as a colour; a regex 
 immediately after a `}` closing a block statement could confuse the TS lexer; `@supports`
 preludes are deliberately unscanned, because a hex in a feature query is not a design
 value. Raw `px` is deliberately not enforced — see DEC-1.
+
+## Manual QA — M2.3 (port one component: table → `.tsx`)
+
+Run from `/app`. Every command was run and passed at `bd2a3df` and, after a polish
+round adding per-row correspondence and header-role tests, at the commit on top of it
+(see below).
+
+```sh
+make check ; echo "EXIT=$?"                                       # expect EXIT=0
+npm run test --prefix app                                         # expect 2 files, 14 tests passed
+uv run python controls/fitness/design_adherence.py ; echo "EXIT=$?"
+# expect: ok [DEC-1] no hardcoded design values under app/src/.   EXIT=0
+```
+
+**The tests-first evidence.** `DecisionTable.test.tsx` was written and run against a
+component that did not yet exist:
+
+```
+$ npx --no-install vitest run src/components/DecisionTable.test.tsx   # (from app/)
+ FAIL  src/components/DecisionTable.test.tsx [ src/components/DecisionTable.test.tsx ]
+Error: Failed to resolve import "./DecisionTable" from
+  "src/components/DecisionTable.test.tsx". Does the file exist?
+```
+
+Then `DecisionTable.tsx` was implemented and the same run went to 10 passed. A later
+polish round added two more cases — column-header roles/text/order, and per-row cell
+correspondence across a multi-decision render — bringing the suite to 12 cases (14 total
+with `App.test.tsx`). The per-row case was verified against a deliberately transposed
+`DecisionTable.tsx` (each row rendering the *next* decision's title/status/superseded-by)
+and failed there before being run, unmodified, against the real component.
+
+**What to look at with your own eyes.** Launch the app:
+
+```sh
+npm run tauri dev
+```
+
+The decisions table should look identical to before this change — small-caps grey
+headers, hairline row dividers, a faint hover tint — plus one new detail: the **status**
+column now renders as a pill/tag (gold-outline for anything not `accepted` or
+`superseded`, filled for those two), instead of plain text.
+
+**The fallback is the point — force an unknown status and confirm it still shows:**
+
+```sh
+sed -i "s/status: 'accepted'/status: 'proposed'/" app/src/components/DecisionTable.test.tsx
+npx vitest run --root app src/components/DecisionTable.test.tsx 2>&1 | tail -5
+git checkout -- app/src/components/DecisionTable.test.tsx
+```
+
+The "renders 'accepted' status..." case fails once its own fixture status no longer
+matches its own assertion (`tag-accent`) — a cheap self-check that the test actually
+exercises the switch rather than passing vacuously. Restore the file afterward.
+
+**Human-only gates left:** none. `App.test.tsx` was not modified and still passes,
+confirming the DOM contract (`<main id="decisions">`, `role="status"`, `role="alert"`,
+a real `<table>`) held across the port.
+
+**What forked, concretely — the tier-3 point this work item exists to demonstrate:**
+
+- The HTML preview's `<td class="text-muted">Today</td>` is a plain "Updated" column
+  with a hardcoded string. The ported cell means something specific to this app
+  (superseded-by) and its content is computed: `null` → empty string, a decision ID →
+  `superseded by DEC-«n»`. The preview has no such branching; the `.tsx` owns a rule the
+  markup never expressed.
+- The preview's `status` column is a **freeform label** (`Live`, `In review`, `Draft`)
+  with tag class chosen by hand, per row, in the HTML. The `.tsx` collapses that to a
+  three-way `tagClassFor(status: string)` function with an explicit fallback branch —
+  the preview has nothing playing that role because it never has to render a status it
+  wasn't told about in advance. This is the fork the brief called out as the most
+  important line in the work item, and it has no analogue in Classical at all: an HTML
+  preview is never handed an *unknown* value, only the ones its author chose to type in.
+- The preview's demo chrome (`.demo`, `.demo-head`, `.note` — a caption block with
+  layout guidance) is preview-only scaffolding and did not come across; only the
+  `<table class="table">` subtree ported.
+- `#decisions table { margin-top: var(--space-4) }` stayed in `App.css` — it is this
+  app's placement of the table under its own `<h1>`, not a restatement of anything
+  `.table` defines. Everything `.table`/`.tag`/`.text-muted` already styled (width,
+  border-collapse, padding, dividers, hover tint) was deleted from `App.css` once
+  `DecisionTable` adopted those classes.

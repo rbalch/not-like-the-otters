@@ -1,24 +1,12 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import { fetchDecisions, type Decision } from './lib/decisions'
+import DecisionTable from './components/DecisionTable'
 
 type LoadState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; decisions: Decision[] }
-
-function DecisionRow({ decision }: { decision: Decision }) {
-  return (
-    <tr>
-      <td className="id">{decision.id}</td>
-      <td className="title">{decision.title}</td>
-      <td className="status">{decision.status}</td>
-      <td className="superseded-by">
-        {decision.supersededBy ? `superseded by ${decision.supersededBy}` : ''}
-      </td>
-    </tr>
-  )
-}
 
 function App() {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
@@ -55,21 +43,7 @@ function App() {
       )}
 
       {state.status === 'ready' && (
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Superseded by</th>
-            </tr>
-          </thead>
-          <tbody>
-            {state.decisions.map((decision) => (
-              <DecisionRow key={decision.id} decision={decision} />
-            ))}
-          </tbody>
-        </table>
+        <DecisionTable decisions={state.decisions} />
       )}
     </main>
   )

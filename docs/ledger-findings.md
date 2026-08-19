@@ -283,6 +283,30 @@ and forcing a harness observation into one loses what makes it interesting.
   severity, verified-sounding justification — is more dangerous than a wrong finding,
   which review catches easily.
 
+### F-15 — A list-rendering test asserts presence, not correspondence
+
+- **Date:** 2026-08-18
+- **Bin:** 3
+- **Claim:** the checkable restatement — "a test rendering more than one item must not use
+  document-wide queries" — would fire on correct code constantly, since plenty of tests
+  legitimately query the document. Not statable as a rule worth enforcing.
+- **Sightings:** 1
+- **Action:** fixed in `6d24cac`, deliberately not a control
+- **Notes:** M2.3. `DecisionTable.test.tsx` asserted that the right values appeared
+  *somewhere on the page* and that row counts were right, but never that a given row held
+  its own cells **together**. A row/column transposition, or a `.map` pairing the wrong
+  decision to the wrong row, passed every case. Found by correctness review as its only
+  finding, scored 4/5.
+  Verified rather than assumed: I transposed the component independently (shifting each
+  row's title to the next decision's, a different break from the builder's) and **only 1
+  of 14 tests caught it.** The other 13 passed a demonstrably wrong component. That is the
+  finding in one number.
+  The fix is `within(row)` scoping instead of document-wide `getByText`, plus asserting
+  row order matches input order. Bin 3 because the rule cannot be stated without firing on
+  correct code — but it belongs in a review checklist, and it mattered disproportionately
+  here because this suite is the **template every future tier-3 component port copies**. A
+  gap in an example propagates; that is worth more attention than the same gap in a leaf.
+
 ### F-11 — "Vendored" as grounds for removing a file from gate surface
 
 - **Date:** 2026-08-18
@@ -515,6 +539,35 @@ agent output, and forcing a harness observation into one loses what makes it int
   is that this control is a parser wearing a lint rule's clothing, and parsers are where
   "looks right, is wrong" lives — it is the worst case, not the typical one. If an
   ordinary control ever costs this, the harness is not paying for itself.
+
+### H-10 — The next work item cost one polish round, and it does not prove the claim
+
+- **Date:** 2026-08-18
+- **Notes:** M2.3, immediately after M2.2. Ported Classical's table to
+  `DecisionTable.tsx` with a Vitest suite. **Zero defects, one polish round, boundary 5/5
+  and correctness 4/5 → 5/5.** Against M2.2's five rounds and seven defects, the contrast
+  is stark enough to be misread, so recording plainly what it does and does not show.
+  **It does not test the H-9 claim.** That claim was specifically about *control or parser*
+  work items written tests-first closing in at most one fix round. M2.3 is a component
+  port — ordinary feature work, explicitly outside the scope the tests-first rule binds.
+  Reading it as evidence would be exactly the reasoning error the ledger exists to prevent:
+  a favourable result from an experiment that was not run. **The fair test is the next
+  control.**
+  What it does show, and it is narrower:
+  - The tier-1 ingest from M2.1 was thorough enough that a real component port needed
+    **no new tokens, no raw hex, and nothing Classical did not already define.** DEC-1 ran
+    clean against genuinely new app code on the first try. That is a real signal about the
+    quality of the ingest, not about the tests-first rule.
+  - **DEC-1 did its first productive work.** Boundary review did not trust that
+    `SRC_DIR.rglob('*')` reaches a new subdirectory — it planted a hex in
+    `app/src/components/` and confirmed the control caught it at the right file:line before
+    reverting. Five rounds of building that control bought a check that now runs on every
+    future component for free. The cost was front-loaded; the value is not.
+  - **Difficulty predicts round count better than process does.** M2.1 (mechanical) took
+    zero rounds, M2.3 (a component with one interesting branch) took one, M2.2 (a parser)
+    took five. The dominant variable across all three is how much of the work is deciding
+    what counts as correct — not which testing discipline was applied. Worth holding in
+    mind before crediting any process change for a cheap work item.
 
 <!--
 ### F-1 — <one-line description>
