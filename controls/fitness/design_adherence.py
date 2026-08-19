@@ -117,10 +117,31 @@ HEX_DIGITS_RE = re.compile(r'^(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0
 # literals (see find_hex_violations_ts).
 HEX_COLOUR_RE = re.compile(r'(?<![0-9a-fA-F_-])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b')
 
-# A quoted string literal: single, double, or backtick, with backslash escapes
-# respected so an escaped quote doesn't end the string early. DOTALL because a
-# template literal can span lines.
-STRING_LITERAL_RE = re.compile(r"""('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`)""", re.DOTALL)
+# Identifiers/keywords after which a following `/` is division or a comparison,
+# never the start of a regex literal — used by `_ts_string_spans`'s
+# regex-vs-divide heuristic. Everything NOT in this set that still reads as a
+# "value" (an ordinary identifier, a number, `)`, or `]`) also blocks a regex
+# read; this is the smaller, opposite list: keywords that end an identifier-like
+# token but leave an expression position open, where a regex literal is legal.
+_REGEX_ALLOWED_AFTER_KEYWORDS = frozenset(
+    {
+        'return',
+        'typeof',
+        'instanceof',
+        'in',
+        'of',
+        'new',
+        'void',
+        'delete',
+        'throw',
+        'case',
+        'yield',
+        'await',
+        'do',
+        'else',
+        'default',
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -267,6 +288,17 @@ def _iter_value_tokens(tokens):
     arguments and bracketed blocks (e.g. `color-mix(in srgb, #2d2b2b 14%, ...)`,
     `linear-gradient(to right, #0000ff, #123456)`), so a hex colour nested inside
     a function call is found exactly as one sitting bare in a declaration value.
+
+    The two rule-halves of this control (hex, font) are meant to walk CSS value
+    structure identically — same recursion into function arguments and nested
+    blocks, same treatment of a `var()` fallback as real value content. Where
+    they diverge is a bug to fix, not a design choice to preserve: round 4's
+    blocker was exactly this, the font half bailing out of an entire
+    declaration on `var()` where this function already recursed correctly.
+    See `_iter_font_value_tokens`, the font half's counterpart, which mirrors
+    this walk with one narrow, stated exception (`var()`'s own reference name
+    is excluded; the hex half has no equivalent exception because a custom
+    property name is never hash-shaped).
     """
     for token in tokens:
         yield token
@@ -306,6 +338,15 @@ def find_hex_violations_css(path: Path, text: str) -> list[Violation]:
     """Flag every hex-shaped `HashToken` found inside a CSS declaration's value —
     never inside a selector prelude, an at-rule prelude, a string, or a comment,
     because those are never visited by `_iter_declarations` in the first place.
+
+    An at-rule's prelude being unscanned is deliberate, not an oversight to
+    "fix": `@supports (color: #ff0000) { ... }` is a feature query — code
+    asking the browser whether it understands a syntax, never a design value
+    to be rendered — so flagging the hex in it would be exactly the false
+    positive DEC-1 calls the worst failure available here. The same reasoning
+    covers `@media`'s prelude, `@font-face`'s (n/a, it has none), and any other
+    at-rule's condition. Only `.content` — what a block actually renders — is
+    ever design-value territory.
     """
     violations = []
     stylesheet = tinycss2.parse_stylesheet(text, skip_comments=True, skip_whitespace=True)
@@ -328,8 +369,48 @@ def find_hex_violations_css(path: Path, text: str) -> list[Violation]:
     return violations
 
 
-def _is_var_reference(tokens) -> bool:
-    return any(isinstance(token, css_ast.FunctionBlock) and token.lower_name == 'var' for token in tokens)
+def _var_fallback_tokens(arguments):
+    """The tokens after `var()`'s first top-level comma — its fallback value —
+    or an empty list if there is none, e.g. a lone `var(--font-heading)`
+    reference. The custom-property name itself (`--font-heading`) is never
+    part of the fallback and must never be walked as value content — it is a
+    reference, not a value, and would otherwise be misread by
+    `_iter_font_value_tokens` as a bare family-name candidate.
+    """
+    for index, token in enumerate(arguments):
+        if isinstance(token, css_ast.LiteralToken) and token.value == ',':
+            return arguments[index + 1 :]
+    return []
+
+
+def _iter_font_value_tokens(tokens):
+    """Like `_iter_value_tokens`, for the font half: the two rule-halves are
+    meant to walk CSS value structure identically — recurse into every
+    function's arguments and nested blocks the same way — with exactly one
+    deliberate difference, here. A `var()` call's own custom-property-name
+    argument is excluded (see `_var_fallback_tokens`); everything else,
+    including its fallback value, is walked exactly like any other function's
+    arguments.
+
+    Stated deliberately, not by accident: a family name inside a `var()`
+    fallback **is** a violation. `var(--font-heading, Arial)` genuinely
+    renders Arial in the cascade whenever `--font-heading` is undefined — a
+    real non-Classical font a browser will actually use, not commentary about
+    one — so it is walked and checked exactly like `color: var(--x,
+    #123456)` already walks into a hex fallback. A lone reference with no
+    fallback at all, `var(--font-heading)`, has no literal family name
+    anywhere in it and stays clean, because there is nothing there to check.
+    """
+    for token in tokens:
+        if isinstance(token, css_ast.FunctionBlock) and token.lower_name == 'var':
+            yield from _iter_font_value_tokens(_var_fallback_tokens(token.arguments))
+            continue
+        yield token
+        children = getattr(token, 'arguments', None) if isinstance(token, css_ast.FunctionBlock) else None
+        if children is None:
+            children = getattr(token, 'content', None)
+        if children:
+            yield from _iter_font_value_tokens(children)
 
 
 def _font_family_violations_in_declaration(path: Path, declaration: css_ast.Declaration) -> list[Violation]:
@@ -357,7 +438,7 @@ def _font_family_violations_in_declaration(path: Path, declaration: css_ast.Decl
             )
         run.clear()
 
-    for token in declaration.value:
+    for token in _iter_font_value_tokens(declaration.value):
         if isinstance(token, css_ast.IdentToken):
             if token.lower_value in NON_FAMILY_FONT_KEYWORDS:
                 flush()
@@ -397,6 +478,18 @@ def find_font_violations_css(path: Path, text: str) -> list[Violation]:
     keyword, or a CSS-wide keyword) resets the run instead of joining it, so
     `italic bold 12px/1.5 'Comic Sans MS', fantasy` correctly finds one violation
     (the string) and treats `italic`, `bold`, and `fantasy` as what they are.
+
+    A `var()` reference is walked into by `_iter_font_value_tokens`, not
+    skipped at the declaration level — round 4's fix. `font-family:
+    var(--font-heading, Arial)` used to bail out of the *whole declaration*
+    the instant any `var()` appeared anywhere in it, missing `Arial` even
+    though `var(--font-heading, Arial)` genuinely renders it whenever the
+    token is undefined. Only `var()`'s own reference name is excluded from the
+    walk (see `_var_fallback_tokens`); its fallback is real value content and
+    is checked exactly like the hex path already checks a hex fallback
+    (`color: var(--x, #123456)` → `#123456` is flagged). A lone reference with
+    no fallback, `var(--font-heading)`, still has nothing literal to check and
+    stays clean.
     """
     violations = []
     stylesheet = tinycss2.parse_stylesheet(text, skip_comments=True, skip_whitespace=True)
@@ -404,22 +497,209 @@ def find_font_violations_css(path: Path, text: str) -> list[Violation]:
         if not isinstance(top_node, (css_ast.QualifiedRule, css_ast.AtRule)):
             continue
         for declaration in _iter_declarations(path, getattr(top_node, 'content', None)):
-            if declaration.name not in ('font-family', 'font'):
-                continue
-            if _is_var_reference(declaration.value):
-                # A custom-property reference, e.g. `font-family: var(--font-heading)`.
-                # What the token resolves to is checked where the token itself is
-                # defined, not at every call site.
+            if declaration.lower_name not in ('font-family', 'font'):
                 continue
             violations.extend(_font_family_violations_in_declaration(path, declaration))
     return violations
 
 
+class _LexFrame:
+    """One entry in `_ts_string_spans`'s nesting stack: either a template
+    literal currently in its literal-text portion (`kind='template'`), or a
+    `${ ... }` interpolation at some nested-brace `depth` (`kind='interp'`).
+    A small mutable class rather than a dict so the type checker can see
+    `depth` is always an `int`, never `object`.
+    """
+
+    __slots__ = ('depth', 'kind')
+
+    def __init__(self, kind: str, depth: int = 0) -> None:
+        self.kind = kind
+        self.depth = depth
+
+
+def _ts_string_spans(text: str) -> list[tuple[int, int]]:
+    """One left-to-right pass over TS/TSX source, returning the `(start, end)`
+    offsets of every span of scannable string-literal text: a `'...'` or
+    `"..."` literal, or the literal-text portions of a `` `...` `` template
+    literal — the parts outside any `${ ... }` interpolation, which is
+    ordinary code and re-enters this same state machine rather than being
+    treated as string content.
+
+    Round 2 fixed this exact failure mode on the CSS side: a lexical feature
+    the old scanner didn't know about (a quoted `}`) desyncing its state for
+    the rest of the file. The TS/TSX side had the identical defect in the
+    other direction — `STRING_LITERAL_RE` didn't know about `//` or `/* */`
+    comments, so an apostrophe inside a comment (`// don't`, `/* it's */`)
+    opened a phantom string that swallowed everything up to the next quote,
+    hiding every real violation after it. The chicken-and-egg is real: finding
+    strings requires knowing where comments are, and finding comments requires
+    knowing where strings are, so both are tracked by the same pass rather
+    than two regexes layered over each other (which just relocates the bug —
+    a comment-stripping pass ahead of a string regex would itself be fooled by
+    a `//` inside a string, e.g. `'https://x.com'`).
+
+    Also tracked in the same pass, because it is exactly as capable of
+    desyncing quote parity as a comment is: `/regex/` literals. A `/` is read
+    as opening a regex, rather than as division, whenever the previous
+    significant token was not itself a value (not an identifier/keyword
+    outside `_REGEX_ALLOWED_AFTER_KEYWORDS`, a number, `)`, or `]`) — the same
+    heuristic real JS tokenizers use, and necessarily incomplete without a
+    full parser: a `}` closing a block statement (regex legal after) versus
+    closing an object literal (regex illegal, `/` is division) is genuinely
+    ambiguous without one. `}` is treated conservatively as value-ending
+    (blocks a regex read) — under-recognising an actual regex literal risks
+    misreading its contents as ordinary code (safe: a stray `'` inside it just
+    starts a string span that a human reading a diff would also find odd),
+    while over-recognising risks consuming real code, including a real string
+    holding a real hex colour, as inert regex body (a silent miss, the
+    dangerous direction). No regex literal exists anywhere in this codebase
+    today, checked directly rather than assumed — see
+    `test_real_files_are_clean`.
+    """
+    spans: list[tuple[int, int]] = []
+    n = len(text)
+    i = 0
+    stack: list[_LexFrame] = []  # 'template' (literal-text mode) or 'interp' (nested-brace depth) frames
+    prev_kind = 'start'  # 'start' | 'value' | 'other' — drives the regex-vs-divide read
+    chunk_start = 0  # start of the pending literal-text chunk while the top frame is 'template'
+
+    while i < n:
+        if stack and stack[-1].kind == 'template':
+            c = text[i]
+            if c == '\\' and i + 1 < n:
+                i += 2
+                continue
+            if c == '`':
+                spans.append((chunk_start, i))
+                stack.pop()
+                i += 1
+                prev_kind = 'value'
+                continue
+            if c == '$' and i + 1 < n and text[i + 1] == '{':
+                spans.append((chunk_start, i))
+                stack.append(_LexFrame('interp'))
+                i += 2
+                prev_kind = 'other'
+                continue
+            i += 1
+            continue
+
+        # 'code' mode: top level, or inside a `${ ... }` interpolation.
+        c = text[i]
+        if c in ' \t\r\n':
+            i += 1
+            continue
+        if text.startswith('//', i):
+            end = text.find('\n', i)
+            i = n if end == -1 else end
+            continue
+        if text.startswith('/*', i):
+            end = text.find('*/', i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        if c == '/' and prev_kind != 'value':
+            j = i + 1
+            in_class = False
+            closed = False
+            while j < n:
+                cj = text[j]
+                if cj == '\\' and j + 1 < n:
+                    j += 2
+                    continue
+                if cj == '\n':
+                    break
+                if cj == '[':
+                    in_class = True
+                elif cj == ']':
+                    in_class = False
+                elif cj == '/' and not in_class:
+                    j += 1
+                    closed = True
+                    break
+                j += 1
+            i = j
+            prev_kind = 'value' if closed else 'other'
+            continue
+        if c in ('"', "'"):
+            j = i + 1
+            while j < n:
+                if text[j] == '\\' and j + 1 < n:
+                    j += 2
+                    continue
+                if text[j] == c:
+                    j += 1
+                    break
+                if text[j] == '\n':
+                    break
+                j += 1
+            spans.append((i, j))
+            i = j
+            prev_kind = 'value'
+            continue
+        if c == '`':
+            stack.append(_LexFrame('template'))
+            i += 1
+            chunk_start = i
+            continue
+        if c == '{':
+            if stack and stack[-1].kind == 'interp':
+                stack[-1].depth += 1
+            i += 1
+            prev_kind = 'other'
+            continue
+        if c == '}':
+            if stack and stack[-1].kind == 'interp':
+                if stack[-1].depth > 0:
+                    stack[-1].depth -= 1
+                    i += 1
+                    prev_kind = 'value'
+                    continue
+                stack.pop()  # closes the interpolation
+                i += 1
+                if stack and stack[-1].kind == 'template':
+                    chunk_start = i  # resume the enclosing template's text mode
+                continue
+            i += 1
+            prev_kind = 'value'
+            continue
+        if c.isalpha() or c in '_$':
+            j = i
+            while j < n and (text[j].isalnum() or text[j] in '_$'):
+                j += 1
+            word = text[i:j]
+            prev_kind = 'other' if word in _REGEX_ALLOWED_AFTER_KEYWORDS else 'value'
+            i = j
+            continue
+        if c.isdigit():
+            j = i
+            while j < n and (text[j].isalnum() or text[j] in '._'):
+                j += 1
+            i = j
+            prev_kind = 'value'
+            continue
+        if c in ')]':
+            prev_kind = 'value'
+            i += 1
+            continue
+        prev_kind = 'other'
+        i += 1
+
+    if stack and stack[-1].kind == 'template':
+        # Unterminated template at EOF: still yield the open chunk, so a
+        # truncated file doesn't silently drop text that was scannable.
+        spans.append((chunk_start, n))
+
+    return spans
+
+
 def find_hex_violations_ts(path: Path, text: str) -> list[Violation]:
-    """Flag every hex-shaped token inside a quoted string literal. A hex colour
-    in TS/TSX source is always written as a string — `'#fff'`, `"#fff"`, or a
-    template literal — never a bare identifier, so restricting the search to
-    string contents is sufficient with no further context check.
+    """Flag every hex-shaped token inside a quoted string literal or a template
+    literal's literal-text portions. A hex colour in TS/TSX source is always
+    written as a string — `'#fff'`, `"#fff"`, or a template literal — never a
+    bare identifier, so restricting the search to string contents (as found by
+    `_ts_string_spans`, comment- and regex-aware) is sufficient with no further
+    context check.
 
     Known gap, accepted rather than hidden: a JSX attribute string that is not
     a colour but happens to be entirely hex characters, e.g. `href="#eee"`,
@@ -430,8 +710,7 @@ def find_hex_violations_ts(path: Path, text: str) -> list[Violation]:
     would be the next step to consider, not a broader exemption.
     """
     violations = []
-    for string_match in STRING_LITERAL_RE.finditer(text):
-        start, end = string_match.span()
+    for start, end in _ts_string_spans(text):
         for match in HEX_COLOUR_RE.finditer(text, start, end):
             violations.append(
                 Violation(
@@ -454,11 +733,35 @@ def find_font_violations_ts(path: Path, text: str) -> list[Violation]:
     return []
 
 
+def _read_failure(path: Path, *, encoding: bool) -> Violation:
+    """A `kind='parse-error'` `Violation` for a file `scan_file` could not
+    read at all — undecodable bytes or an `OSError` (missing, permission
+    denied, ...). Treated exactly like an unparseable-CSS result already is
+    (see `find_parse_failure`): a file this control cannot read is a
+    *failure*, never a silent `[]` that reads identically to "this file is
+    fine". `UnicodeDecodeError` gets a slightly more specific message than a
+    bare `OSError`, since the remedy differs (fix the encoding vs. fix the
+    file itself), but both are distinguishable from both an adherence
+    violation and a CSS parse error by `kind` and by never being confused
+    with a clean scan.
+    """
+    detail = ' (invalid UTF-8)' if encoding else ''
+    return Violation(
+        path=path,
+        line=1,
+        text=f'cannot read file{detail} — refusing to report clean',
+        remedy='fix the file encoding; adherence cannot be checked on unreadable input',
+        kind='parse-error',
+    )
+
+
 def scan_file(path: Path) -> list[Violation]:
     try:
         text = path.read_text(encoding='utf-8')
-    except (UnicodeDecodeError, OSError):
-        return []
+    except UnicodeDecodeError:
+        return [_read_failure(path, encoding=True)]
+    except OSError:
+        return [_read_failure(path, encoding=False)]
     if path.suffix in CSS_SUFFIXES:
         parse_failure = find_parse_failure(path, text)
         if parse_failure is not None:

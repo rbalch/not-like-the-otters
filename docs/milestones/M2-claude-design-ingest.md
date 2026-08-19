@@ -6,7 +6,7 @@ proof, not a finished port.
 | item | state |
 |---|---|
 | M2.1 tier 1 — tokens, vendored fonts, window on Classical | **done** (`4c8942a`, `ac2505c`) |
-| M2.2 adherence enforcement — fitness control + decision | next |
+| M2.2 adherence enforcement — DEC-1 + fitness control | **done** (`762566e`…`10d2f0e`) |
 | M2.3 port one component (`table` → `.tsx`) with a test | not started |
 | M2.4 otters into the app, green one as brand mark | not started |
 | M2.5 app icon — crop, plate, `tauri icon` | not started |
@@ -339,3 +339,79 @@ block.
 **Human-only gates left:** none for M2.1. The window rendering must be seen on a machine
 with a display — the container has no compositor — but `npm run tauri dev` on the host is
 the whole check.
+
+## Manual QA — M2.2 (design adherence enforcement, DEC-1)
+
+Run from `/app`. Every command was run and passed at `10d2f0e`.
+
+```sh
+make check ; echo "EXIT=$?"                                   # expect EXIT=0
+uv run pytest tests/test_design_adherence.py -q               # expect 81 passed
+uv run python controls/fitness/design_adherence.py ; echo "EXIT=$?"
+# expect: ok [DEC-1] no hardcoded design values under app/src/.   EXIT=0
+```
+
+**The acceptance criterion — a raw hex in a `.tsx` turns the gate red.** This is the whole
+point of the milestone, so run it rather than trusting it:
+
+```sh
+sed -i "s|const \[state, setState\]|const _x = '#ff00aa'; const [state, setState]|" app/src/App.tsx
+make check ; echo "EXIT=$?"
+```
+Expect **non-zero**, failing at the `controls` stage with
+`FAIL [DEC-1] app/src/App.tsx:<n> '#ff00aa' -> use var(--token)`. Then:
+
+```sh
+git checkout -- app/src/App.tsx && make check ; echo "EXIT=$?"    # expect EXIT=0
+```
+
+**Three cheap negative checks, each guarding a real failure this control shipped with.**
+Write the file, run the control, delete the file:
+
+```sh
+# 1. fails closed on unparseable CSS rather than reporting clean
+printf '.broken { color: #ff0000\n@@@ {{{\n' > app/src/__t.css
+uv run python controls/fitness/design_adherence.py ; echo "EXIT=$?"
+# expect EXIT=1 and "cannot parse CSS — refusing to report clean"
+
+# 2. fails closed on an unreadable file
+printf '.a { color: #ff0000; }\n\xff\xfe\n' > app/src/__t.css
+uv run python controls/fitness/design_adherence.py ; echo "EXIT=$?"
+# expect EXIT=1 and "cannot read file (invalid UTF-8) — refusing to report clean"
+
+# 3. does NOT fire on correct code — a hex-shaped id selector is not a colour
+printf '@media (max-width: 600px) { #fff123 { padding: 4px; } }\n' > app/src/__t.css
+uv run python controls/fitness/design_adherence.py ; echo "EXIT=$?"
+# expect EXIT=0, ok
+
+rm -f app/src/__t.css
+```
+
+Check 3 matters most. A control that fires on correct code is worse than the drift it
+catches, because it teaches everyone to route around the gate.
+
+**What to look at with your own eyes.** Nothing visual changed — `--color-danger` keeps
+the exact `#b3261e` the raw hex had, so this was pure tokenisation. Launch the app and
+confirm the error state still renders the same red if you want reassurance:
+
+```sh
+npm run tauri dev
+```
+
+**Two token files, and the difference is the point:**
+
+| file | whose | on re-sync |
+|---|---|---|
+| `app/src/classical.css` | upstream Classical's | **overwritten** — never hand-edit |
+| `app/src/tokens-local.css` | ours | **never touched** — app-specific tokens live here |
+
+When Classical does not define something the app needs, it goes in `tokens-local.css`.
+That is the tier-1/tier-3 boundary made physical.
+
+**Human-only gates left:** none.
+
+**Known accepted gaps**, all documented in the control's docstring and none present in the
+tree today: `href="#eee"` in a `.tsx` string would misfire as a colour; a regex literal
+immediately after a `}` closing a block statement could confuse the TS lexer; `@supports`
+preludes are deliberately unscanned, because a hex in a feature query is not a design
+value. Raw `px` is deliberately not enforced — see DEC-1.

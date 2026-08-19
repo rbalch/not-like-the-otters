@@ -224,6 +224,65 @@ and forcing a harness observation into one loses what makes it interesting.
   obvious: scan the gate and the docs for verification commands that can silently match an
   empty set.
 
+### F-13 — A checker's two halves diverge on the same input structure
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** Where one control enforces two or more rules over the same input, every rule
+  must walk that input's structure identically. A structural shape handled by one half and
+  not another is a defect, not a design choice.
+- **Sightings:** 1 (three instances, one work item — counted once, see below)
+- **Action:** soft — fixed in `4949ca5`, now pinned by a shared test battery
+- **Notes:** M2.2. `design_adherence.py` enforces two halves of DEC-1: no raw hex, no
+  non-Classical font. Three of the six defects were the halves disagreeing about the same
+  CSS structure:
+  - the `font` shorthand was unrecognised while `font-family` was (`dbc9358`)
+  - property names were matched case-sensitively in the font half only (`e0a115d`)
+  - `var()` blanket-skipped the whole declaration in the font half, while the hex half
+    correctly recursed into `var()` fallbacks — so `color: var(--x, #123456)` was caught
+    and `font-family: var(--font-heading, Arial)` was not (`4949ca5`)
+  Each was found and fixed individually before the shape was visible. **Counted as one
+  sighting, not three** — they are one bug wearing three hats, and inflating the count
+  with instances of a single defect is exactly how the rule of three gets gamed (see
+  F-5a for the same call made the other way).
+  The fix that matters is not the three patches but `_STRUCTURAL_BATTERY`: 11 input shapes
+  (`var()` with and without fallback, `var()` in a comma list, nested `var()`, function
+  nesting, `!important`, uppercase property names, at-rule nesting, comment interference,
+  malformed input) run through **both** halves on the same snippet, asserting the expected
+  result for each even where a shape is only interesting for one. Divergence is now a test
+  failure rather than something only adversarial review can find.
+  Machine-checkable in principle — a control could assert that every scanner in a control
+  module shares one token-walking helper — but that is a rule about internal code shape,
+  the sighting count is one, and the test battery already closes it. Held.
+
+### F-14 — A finding's severity argument was wrong while the finding was right
+
+- **Date:** 2026-08-18
+- **Bin:** 3
+- **Claim:** none statable as a rule. "A reviewer's reasoning must be correct" is not
+  checkable, and demanding it would just move the judgement somewhere else.
+- **Sightings:** 1
+- **Action:** noted, deliberately not a control
+- **Notes:** M2.2 close. Final review found a genuine seventh fail-open — `scan_file`
+  returned `[]` on an undecodable file, so a `.css` holding `color: #ff0000` in invalid
+  UTF-8 reported `ok`, exit 0. It rated the finding **minor** on the grounds that
+  `make controls` has `lint` as a prerequisite, so oxlint rejects invalid-UTF-8 files
+  first — and it verified that mitigation by execution.
+  **The mitigation is false for the case reproduced: oxlint does not process `.css` at
+  all.** It covers `.tsx` and not CSS, and either way it is incidental Makefile ordering
+  rather than a property of the control — running the control directly loses it silently.
+  The finding was right, the severity reasoning was wrong, and the two came bundled with
+  the confident tone that a mitigation had been *checked*.
+  The lesson generalises past this instance: **"verify by execution" applies to a
+  reviewer's argument, not only to a builder's evidence.** A reviewer that runs commands
+  is not thereby correct about what those commands prove. Had the severity been accepted,
+  a known exit-0-on-failure path would have shipped, and the skill's hard rules forbid
+  exactly that — which is what caught it, not scepticism about the reviewer.
+  Bin 3 because the checkable restatement would be about the shape of arguments rather
+  than the shape of code. Logged because the failure mode — correct finding, wrong
+  severity, verified-sounding justification — is more dangerous than a wrong finding,
+  which review catches easily.
+
 ### F-11 — "Vendored" as grounds for removing a file from gate surface
 
 - **Date:** 2026-08-18
@@ -424,6 +483,38 @@ agent output, and forcing a harness observation into one loses what makes it int
   M2.2 (a matcher, where deciding what counts as a violation *is* the work) took **three**.
   If the next control still takes three, tests-first is not the fix and the right response
   is to record that, not to keep the rule.
+- **Final tally, added at close.** The work item ran to **five fix rounds and seven
+  defects**, not the three this entry was written after. The later ones arrived *after*
+  the tests-first rule landed at `48b079e`, and the rule did not prevent them — it made
+  them cheaper, because each round wrote its cases red first and every fix stayed pinned
+  (35 → 49 → 68 → 81 tests). Recorded plainly: **tests-first shortened nothing here.**
+  The claim above is about a work item written tests-first *from the start*; M2.2 was
+  retrofitted, so it does not test the claim and must not be read as evidence for it.
+  What actually found the seven defects is the more useful result, because no two came
+  from the same source:
+
+  | # | defect | found by |
+  |---|---|---|
+  | 1 | preceding-character heuristic, 5 of 10 missed | orchestrator probe |
+  | 2 | `content: "}"` desyncs brace depth | boundary review |
+  | 3 | `#fff123` in `@media` flagged as a colour | boundary review |
+  | 4 | `font` shorthand bypass | boundary review |
+  | 5 | fail-open on unparseable CSS | builder self-disclosure |
+  | 6 | TS comment desync; case-sensitive font match | correctness review |
+  | 7 | `var()` blanket-skip in the font half | boundary re-review |
+  | 8 | fail-open on undecodable files | final review |
+
+  Four distinct discoverers, no two defects by the same method, and **`make check` was
+  green for every single one.** The single most transferable sentence from this work item:
+  *a control's gate passing tells you nothing about whether the control works.* The
+  redundancy of two reviewers plus an orchestrator pass looked like ceremony after M2.1
+  approved 5/5 twice; here it was the only thing standing between a green build and a
+  control that reported clean over real violations.
+  Cost, stated honestly rather than buried: five rounds and roughly 700k subagent tokens
+  on one control. That is a bad ratio and should not be normalised. The defensible reading
+  is that this control is a parser wearing a lint rule's clothing, and parsers are where
+  "looks right, is wrong" lives — it is the worst case, not the typical one. If an
+  ordinary control ever costs this, the harness is not paying for itself.
 
 <!--
 ### F-1 — <one-line description>

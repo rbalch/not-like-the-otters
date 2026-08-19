@@ -112,6 +112,230 @@ def test_hex_ts_violations_caught(src: str, expected: list[str]) -> None:
     assert hex_ts(src) == expected
 
 
+# --- must FAIL: TS/TSX comment-awareness (round 3 blocker 1) -----------------
+#
+# The string-literal scanner must not be desynced by an apostrophe inside a `//`
+# or `/* */` comment, a `//` inside an ordinary string, an escaped quote inside a
+# string, or an unrecognised regex literal — any of these treating a non-string
+# character as a string delimiter corrupts quote parity for the rest of the file,
+# hiding every real violation that follows.
+
+
+def test_hex_ts_survives_apostrophe_in_line_comment() -> None:
+    src = "// don't do this\nconst z = '#123456'\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_survives_apostrophe_in_block_comment() -> None:
+    src = "/* it's fine */\nconst z = '#123456'\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_survives_comment_before_template_literal() -> None:
+    src = "// don't do this\nconst z = `#123456`\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_survives_slashes_inside_a_string() -> None:
+    """A `//` inside an ordinary string (a URL) must not be read as opening a
+    line comment that swallows the rest of the file."""
+    src = "const u = 'https://x.com'\nconst z = '#123456'\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_survives_escaped_quote_inside_a_string() -> None:
+    src = "const s = 'it\\'s'\nconst z = '#123456'\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_survives_regex_literal_after_assignment() -> None:
+    """A `/regex/` literal containing a quote character must not be read as
+    opening a string — the regex-vs-divide heuristic must recognise `/` as a
+    regex start after `=`."""
+    src = "const r = /it's/\nconst z = '#123456'\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_survives_regex_literal_after_return() -> None:
+    src = "function f() { return /it's/ }\nconst z = '#123456'\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_hex_inside_template_interpolation() -> None:
+    """A string literal nested inside a template literal's `${ ... }`
+    interpolation is still ordinary code and must still be scanned."""
+    src = "const z = `prefix ${ '#123456' } suffix`\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_comment_inside_interpolation_does_not_desync() -> None:
+    src = "const z = `${ /* it's ok */ '#123456' }`\n"
+    assert hex_ts(src) == ['#123456']
+
+
+def test_hex_ts_comment_only_is_not_flagged() -> None:
+    """A hex-shaped string sitting inside commentary, not code, is not a
+    design-value violation — matching how the CSS side treats comments."""
+    assert hex_ts('// #123456 is our brand colour, do not hardcode it\n') == []
+
+
+def test_hex_ts_block_comment_only_is_not_flagged() -> None:
+    assert hex_ts('/* #123456 */\n') == []
+
+
+# --- must FAIL: CSS font property names are case-insensitive (round 3 blocker 2)
+
+
+@pytest.mark.parametrize(
+    'css',
+    [
+        '.a { FONT-FAMILY: Arial; }',
+        '.a { Font-Family: Arial; }',
+        '.a { FONT: italic bold 12px/1.5 Arial; }',
+    ],
+)
+def test_font_property_name_case_insensitive(css: str) -> None:
+    assert font_css(css) == ['Arial']
+
+
+# --- must FAIL: font family inside a var() fallback (round 4 blocker) --------
+#
+# `var(--font-heading, Arial)` genuinely renders Arial whenever the token is
+# undefined -- that is a real non-Classical font reaching the cascade, not
+# commentary about one, so it must be caught exactly like a hex colour inside
+# a `var()` fallback already is (`color: var(--x, #123456)` -> FAIL). The old
+# code bailed out of the *entire declaration* the moment any `var()` appeared
+# anywhere in it, which is the asymmetry: the hex path recurses into a
+# function's arguments looking for a HashToken; the font path did not do the
+# equivalent walk looking for a family name.
+
+
+@pytest.mark.parametrize(
+    'css',
+    [
+        '.a { font-family: var(--font-heading, Arial); }',
+        '.b { font-family: var(--font-body), Arial; }',
+        '.c { font: var(--font-body, 16px Arial); }',
+        '.d { font-family: Arial, var(--font-body); }',
+        '.e { font-family: var(--a, var(--b, Arial)); }',  # nested var() fallback
+    ],
+)
+def test_font_family_inside_var_fallback_caught(css: str) -> None:
+    assert font_css(css) == ['Arial']
+
+
+def test_font_family_lone_var_reference_stays_clean() -> None:
+    """The honest case: a bare `var(--font-heading)` reference with no
+    fallback at all must not be flagged -- there is no literal family name
+    anywhere in the declaration to check."""
+    assert font_css('.a { font-family: var(--font-heading); }') == []
+
+
+def test_font_family_var_fallback_of_allowed_family_stays_clean() -> None:
+    assert font_css(".a { font-family: var(--font-heading, 'Cormorant Garamond'); }") == []
+
+
+# --- shared structural battery: both rule-halves against the same shapes -----
+#
+# Every defect found since round 3 was a structural shape one half of this
+# control (hex, font) handled and the other did not. The two halves are
+# intended to walk CSS value structure identically -- recurse into every
+# function's arguments and nested blocks, ignore comments and at-rule
+# preludes, treat a `var()` fallback as real value content -- so divergence
+# between them on the same shape is a bug, never a design choice. This battery
+# runs one CSS snippet exercising a structural shape through *both*
+# `find_hex_violations_css` and `find_font_violations_css` and asserts both
+# outcomes, even for a shape that is only "interesting" for one half, so an
+# asymmetric regression shows up here instead of shipping unnoticed again.
+_STRUCTURAL_BATTERY = [
+    (
+        'plain_declaration',
+        '.x { color: #123456; font-family: Arial; }',
+        ['#123456'],
+        ['Arial'],
+    ),
+    (
+        'var_with_fallback',
+        '.x { color: var(--c, #123456); font-family: var(--f, Arial); }',
+        ['#123456'],
+        ['Arial'],
+    ),
+    (
+        'var_no_fallback',
+        '.x { color: var(--c); font-family: var(--f); }',
+        [],
+        [],
+    ),
+    (
+        'var_in_comma_list',
+        '.x { background: var(--c), #123456; font-family: var(--f), Arial; }',
+        ['#123456'],
+        ['Arial'],
+    ),
+    (
+        'nested_var_fallback',
+        '.x { color: var(--c, var(--d, #123456)); font-family: var(--f, var(--g, Arial)); }',
+        ['#123456'],
+        ['Arial'],
+    ),
+    (
+        'function_nesting',
+        '.x { background: linear-gradient(to right, #0000ff, #123456); font-family: Arial; }',
+        ['#0000ff', '#123456'],
+        ['Arial'],
+    ),
+    (
+        'important',
+        '.x { color: #123456 !important; font-family: Arial !important; }',
+        ['#123456'],
+        ['Arial'],
+    ),
+    (
+        'uppercase_property',
+        '.x { COLOR: #123456; FONT-FAMILY: Arial; }',
+        ['#123456'],
+        ['Arial'],
+    ),
+    (
+        'at_rule_nesting',
+        '@media (max-width: 600px) {\n  .x { color: #123456; font-family: Arial; }\n}',
+        ['#123456'],
+        ['Arial'],
+    ),
+    (
+        'comment_interference',
+        '/* #dead00 Arial */\n.x { color: #123456; font-family: Arial; }',
+        ['#123456'],
+        ['Arial'],
+    ),
+    (
+        'allowed_values_only',
+        ".x { color: var(--color-danger); font-family: 'Cormorant Garamond'; }",
+        [],
+        [],
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ('name', 'css', 'expected_hex', 'expected_font'), _STRUCTURAL_BATTERY, ids=[b[0] for b in _STRUCTURAL_BATTERY]
+)
+def test_structural_battery_both_halves_agree(
+    name: str, css: str, expected_hex: list[str], expected_font: list[str]
+) -> None:
+    assert hex_css(css) == expected_hex, f'{name}: hex half diverged'
+    assert font_css(css) == expected_font, f'{name}: font half diverged'
+
+
+def test_structural_battery_malformed_input_suppresses_both_halves() -> None:
+    """A parse-error result must be uniform across both design-value types in
+    the same file -- neither a hex nor a font violation is reported
+    individually once the file is unparseable; the whole file refuses to
+    answer once, not each half separately."""
+    css = '.broken { color: #123456; font-family: Arial\n@@@ unparseable {{{\n'
+    assert scan_file_violations(css, suffix='.css') == ['cannot parse CSS — refusing to report clean']
+
+
 # --- must PASS: correct code, never flagged -----------------------------------
 
 
@@ -233,6 +457,81 @@ def test_real_css_files_parse_cleanly(relative_path: str) -> None:
     path = repo_root / relative_path
     text = path.read_text(encoding='utf-8')
     assert find_parse_failure(path, text) is None
+
+
+# --- must FAIL: unreadable/undecodable files fail closed, never silently -----
+#
+# `UnicodeDecodeError` / `OSError` from `read_text` used to make `scan_file`
+# return `[]` -- indistinguishable from "this file is fine". Treated exactly
+# like unparseable CSS already is (see above): refuse to answer with a
+# distinct `kind='parse-error'` violation rather than report clean.
+
+
+def test_undecodable_css_with_a_violation_still_fails(tmp_path: Path) -> None:
+    path = tmp_path / 'broken.css'
+    path.write_bytes(b'.a { color: #ff0000; }\n\xff\xfe invalid utf8\n')
+    violations = scan_file(path)
+    assert len(violations) == 1
+    assert violations[0].kind == 'parse-error'
+    assert 'cannot read file' in violations[0].text
+
+
+def test_undecodable_css_with_no_violation_still_fails(tmp_path: Path) -> None:
+    path = tmp_path / 'broken.css'
+    path.write_bytes(b'.a { color: red; }\n\xff\xfe invalid utf8\n')
+    violations = scan_file(path)
+    assert len(violations) == 1
+    assert violations[0].kind == 'parse-error'
+
+
+def test_undecodable_tsx_with_a_violation_still_fails(tmp_path: Path) -> None:
+    path = tmp_path / 'broken.tsx'
+    path.write_bytes(b"const z = '#ff0000'\n\xff\xfe invalid utf8\n")
+    violations = scan_file(path)
+    assert len(violations) == 1
+    assert violations[0].kind == 'parse-error'
+
+
+def test_undecodable_tsx_with_no_violation_still_fails(tmp_path: Path) -> None:
+    path = tmp_path / 'broken.tsx'
+    path.write_bytes(b"const z = 'hello'\n\xff\xfe invalid utf8\n")
+    violations = scan_file(path)
+    assert len(violations) == 1
+    assert violations[0].kind == 'parse-error'
+
+
+def test_unreadable_missing_file_fails_closed(tmp_path: Path) -> None:
+    """A file that vanished (or was never readable) between listing and
+    reading must not be silently treated as clean -- the `OSError` branch of
+    the same guard, not just the `UnicodeDecodeError` one."""
+    path = tmp_path / 'does-not-exist.css'
+    violations = scan_file(path)
+    assert len(violations) == 1
+    assert violations[0].kind == 'parse-error'
+
+
+@pytest.mark.parametrize(
+    'relative_path',
+    [
+        'app/src/App.css',
+        'app/src/App.tsx',
+        'app/src/App.test.tsx',
+        'app/src/index.css',
+        'app/src/main.tsx',
+        'app/src/lib/decisions.ts',
+        'app/src/classical.css',
+        'app/src/tokens-local.css',
+    ],
+)
+def test_real_files_read_cleanly(relative_path: str) -> None:
+    """The read-failure guard must never fire on the current tree -- every
+    real file, including the two exempt token files (scanned here without
+    the exemption `scan()` applies, since only the read step is under test),
+    reads and decodes without tripping it."""
+    repo_root = Path(__file__).resolve().parents[1]
+    path = repo_root / relative_path
+    violations = scan_file(path)
+    assert all(v.kind != 'parse-error' for v in violations)
 
 
 def scan_file_violations(text: str, *, suffix: str) -> list[str]:
