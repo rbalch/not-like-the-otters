@@ -382,6 +382,49 @@ agent output, and forcing a harness observation into one loses what makes it int
   came from reading something, even when the verdict and the score are identical. Recorded
   because a run of clean rounds is exactly when the loop starts to feel like ceremony.
 
+### H-9 — The process documented a pillar it never enforced, and it cost three rounds
+
+- **Date:** 2026-08-18
+- **Notes:** M2.2. The DEC-1 adherence control shipped wrong **three times in a row**, and
+  every round had passing negative tests and a green `make check`:
+  1. assumed which characters precede a hex colour → missed `border: 1px solid #fff` and
+     4 other ordinary shapes, 5 of 10
+  2. assumed CSS has no quoted braces and no selectors inside at-rules → `content: "}"`
+     desynced the depth counter, and `#fff123` inside `@media` was flagged as a colour
+  3. assumed unparseable input was safe to skip → **failed open**, reporting `ok` over a
+     file containing a raw hex
+  Each round replaced one unstated assumption with different unstated assumptions, then
+  wrote its negative tests from the same mental model that produced the code — so the
+  tests confirmed the assumptions rather than challenging them. **The gate caught none of
+  it.** What caught it was the orchestrator probing by hand, then a boundary reviewer told
+  explicitly not to reuse those probes, then the builder's own honest disclosure of a gap
+  it had reasoned its way past.
+  **The finding is not the three bugs. It is that `AGENTS.md` line ~195 already listed
+  "spec-first tests" as one of the four things this project exists to test, and the
+  `build-loop` skill never operationalised it** — every mention of tests in the skill was
+  after the fact (the reviewer judges tests; the builder gets a verification list). Nothing
+  said write them first. The gap between what a project says it does and what its process
+  actually enforces is the failure this whole repo is about, and here it happened to the
+  harness itself. Filed unbinned: it is an observation about the harness, not a dislike of
+  agent output, and forcing it into a bin would lose exactly that.
+  **Fixed in this close-out** — the `build-loop` skill now requires tests-first for
+  controls, parsers, validators and matchers (cases derived from the decision's Rule text,
+  watched to fail, committed into `make check`), plus an adversarial clause forbidding the
+  reviewer from reusing the builder's cases. `AGENTS.md` carries the short form.
+  Deliberately **not** a decision: "were these tests written first" is not machine-checkable,
+  and manufacturing a control for it is the failure mode the harness warns against. The
+  checkable proxy — every `controls/fitness/*.py` has a matching `tests/test_*.py` — is a
+  reasonable future control at one sighting, but it would verify the artifact rather than
+  the discipline. If a second control ships without a durable suite, that is sighting two.
+  **The falsifiable claim, recorded so this can be judged rather than believed:** a control
+  or parser work item written tests-first should close in **at most one fix round**. The
+  baseline from today is unusually clean because the two work items sit on either side of
+  the boundary — M2.1 (vendoring and wiring; the spec was "copy this file, strip that
+  line") took **zero** fix rounds and was approved 5/5 by both reviewers first pass, while
+  M2.2 (a matcher, where deciding what counts as a violation *is* the work) took **three**.
+  If the next control still takes three, tests-first is not the fix and the right response
+  is to record that, not to keep the rule.
+
 <!--
 ### F-1 — <one-line description>
 - **Date:** YYYY-MM-DD

@@ -104,6 +104,45 @@ Three ledger-specific additions:
   valuable data this project collects. A builder that quietly works around a rule has
   corrupted the experiment and you will not find out for weeks.
 
+### Tests first — required for controls, parsers, validators and matchers
+
+**When the work item is a control, a parser, a validator or a matcher — anything where
+"what counts as a violation" is itself the hard part — the tests are written first.** Put
+it in the brief as a numbered scope item, not as advice.
+
+- **Derive the cases from the spec, never from the implementation.** For a control that
+  means the decision's `## Rule` text. Tests written after the code are written from the
+  same mental model that produced it, so they confirm its assumptions instead of
+  challenging them.
+- **Watch them fail before the implementation exists**, and require that failing output in
+  the report. A test that has never been seen red is not evidence.
+- **They land as a committed suite inside `make check`** — `tests/test_<control>.py` or a
+  Vitest file. Throwaway probes do not count: they prove the round and then vanish, so the
+  next person to touch the file inherits nothing.
+- **Both directions, always.** Cases that must fail *and* correct code that must stay
+  green. A control that fires on correct code is worse than the nit it was meant to catch.
+
+This is `AGENTS.md`'s "spec-first tests" made operational. It is scoped deliberately —
+ordinary feature work stays the builder's judgement, because the cost only pays for itself
+where the specification is the difficult part.
+
+**Why it is a rule and not a preference.** DEC-1's adherence control shipped wrong three
+times in a row, each round with passing negative tests and a green `make check`:
+its first version assumed which characters precede a hex colour, its second assumed CSS
+has no quoted braces and no selectors inside at-rules, its third assumed unparseable input
+was safe to skip and so failed open. Every one of those assumptions was invisible to the
+round that made it. The gate caught none of them.
+
+**And tests-first alone is not sufficient** — pair it with the adversarial pass in
+section 2. The third round did write its regression cases before fixing and still shipped
+a fail-open, because "unparseable input" was not in its model of the problem at all. One
+author's tests and code share blind spots even when the tests come first.
+
+*The claim to check this against:* a control or parser work item written tests-first
+should close in **at most one fix round**. M2.2, written tests-after, took three. If the
+next one still takes three, tests-first is not the fix and the honest move is to record
+that rather than keep the rule.
+
 Require a structured return: commit SHAs and messages, per-verification evidence
 (**command output, not claims**), the `make check` exit code stated explicitly,
 deviations with reasons, blocked-by-a-rule items, and follow-ups.
@@ -132,6 +171,12 @@ Both briefs must demand:
 
 - **Verify by execution, not by reading.** Re-run the builder's key verifications
   independently, especially secret sweeps and negative paths.
+- **Construct your own cases; never reuse the builder's.** Say this explicitly in the
+  brief, and name the cases already used so the reviewer knows what is off-limits. The
+  builder's suite passes by construction — re-running it confirms nothing. When the work
+  item is a control or a parser, require the reviewer to invent violations the
+  implementation was not built against. This is what found the second and third rounds of
+  DEC-1, both of which had a green gate and a passing test suite.
 - Findings with severity (`blocker` / `important` / `minor` / `nit`), `file:line`, and a
   concrete failure scenario for anything called a bug.
 - Attention to: interface contracts (what one side emits and the other parses),
