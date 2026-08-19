@@ -1,7 +1,7 @@
 # M2 — Ingesting a Claude Design
 
-**Status:** in progress. A spike — the deliverable is a decision plus the smallest real
-proof, not a finished port.
+**Status:** done, 2026-08-19. A spike — the deliverable was a decision plus the smallest
+real proof, not a finished port.
 
 | item | state |
 |---|---|
@@ -10,7 +10,7 @@ proof, not a finished port.
 | M2.3 port one component (`table` → `.tsx`) with a test | **done** (`bd2a3df`…`6d24cac`) |
 | M2.4 otters into the app, green one as brand mark | **done** (`73302a9`…`5863aa4`) |
 | M2.5 app icon — crop, plate, `tauri icon` | **done** (`63ea545`, `d90479e`) |
-| M2.6 re-sync procedure and the tier-3 fork point | not started |
+| M2.6 re-sync procedure and the tier-3 fork point | **dropped on purpose** — see below |
 
 ## Goal
 
@@ -702,3 +702,52 @@ ships. Both read comparably at 32 px; the dark one has more presence against a l
 background and matches the otters' hoodie-and-code-rain look, the light one is the more
 conventional app-icon treatment. Switching is a one-line change to the plate colour in step
 1 above plus a regeneration.
+
+## M2.6 was dropped, deliberately
+
+The scope line read *"write down the re-sync procedure for tier 1 and the fork point for
+tier 3."* The second half turned out to be already done, and the first half was not worth
+building. Both are worth explaining, because "we skipped it" and "we decided against it"
+are different things and only one of them is useful later.
+
+**The fork point is already written down**, in more detail and with better evidence than a
+summary section would have carried. It is spread across the Manual QA sections above and
+`docs/ledger-findings.md`, attached to the work that produced it:
+
+- **`tagClassFor`'s fallback branch** (M2.3) — the ported `.tsx` handles a status the
+  design system's HTML preview structurally cannot, because a preview is never handed a
+  value its author did not type. That is the tier-3 fork in one concrete difference.
+- **The `.plate` filter** (M2.4) — Classical's image treatment tints toward sepia; the
+  brand mark takes its framing and skips the filter. Including the part where the first
+  measurement justifying that was wrong (finding **F-16**), and the fork survived on
+  different reasoning than it was made for.
+- **`tokens-local.css` versus `classical.css`** (M2.2) — the boundary made physical.
+  Anything in the vendored file is upstream's and gets overwritten; anything in the local
+  file is ours and never does.
+
+**The re-sync procedure was declined**, and the reason generalises. Two things pointed the
+same way:
+
+*It cannot be automated, and that is structural.* Reading the Classical project needs the
+`DesignSync` tool, which is an agent capability, not a program in this repo — there is no
+endpoint, credential or CLI under `src/not_like_the_otters/` that could fetch it. Every
+re-sync therefore begins with an agent or a human pulling the file by hand. CI can never
+notice upstream drift unattended. A procedure doc would have described a process that runs,
+at most, twice a year and always with a person already in the loop.
+
+*And the next change probably is not a re-sync.* The human's call, and the better argument:
+if the design changes meaningfully, the likely response is to redo the ingest with what was
+learned here, not to diff the old copy against the new one. Building a comparison tool for
+that is speculative infrastructure — tooling for a future that probably arrives in a
+different shape.
+
+What survives is the honest statement M2 actually asked for, and it was already in the
+Three Tiers section before any code was written: **tier 1 re-syncs, tier 3 does not.**
+`app/src/classical.css` is byte-identical to its source below the `@font-face` block, and
+is deliberately held out of Prettier's reach so it stays that way — so a future re-sync is
+a `get_file` and a `diff`, whenever someone wants one. That is the whole procedure, and it
+did not need a page.
+
+**If this ever matters**, the cheapest version is a `make design-diff FILE=<fetched>` that
+normalises the one intentional divergence (the local `@font-face` block replacing the
+remote `@import`) and reports the rest. Recorded here so the option is not re-derived.

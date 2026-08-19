@@ -668,3 +668,30 @@ agent output, and forcing a harness observation into one loses what makes it int
 - **Action:** soft — noted, no control yet
 - **Notes:** <anything surprising about the harness itself>
 -->
+
+### H-11 — A milestone item declined, and why that is a result
+
+- **Date:** 2026-08-19
+- **Notes:** M2 close. M2.6 ("write down the re-sync procedure for tier 1 and the fork
+  point for tier 3") was dropped rather than built. Recording it because a declined item
+  is data, and because the reasoning generalises past this milestone.
+  Half of it was **already done** — the tier-3 fork points were written where the work
+  happened (Manual QA sections, F-15, F-16, F-17), with measurements attached, rather than
+  summarised later in prose. Writing the summary would have created a second, drifting
+  account of things already recorded once.
+  The other half was **declined on the human's argument**, which is the better one: *"I
+  think going forward I would do all this differently if I want to change it anyway."* If
+  the design changes meaningfully, the response is to redo the ingest with what was learned
+  — not to diff an old copy against a new one. A comparison tool would be built for a
+  future that probably arrives in a different shape.
+  A structural fact reinforced it: **re-sync cannot be automated here at all.** Reading the
+  Classical project requires the `DesignSync` agent tool; there is no endpoint, credential
+  or CLI in the repo that could fetch it. Every re-sync starts with a human or an agent
+  pulling the file by hand, so CI can never detect upstream drift unattended. Worth knowing
+  as a limit rather than rediscovering it while building against it.
+  **The pattern worth keeping:** the milestone's "Done when" did not ask for the procedure.
+  It asked that *"the doc says which tier re-syncs and which does not"* — already true
+  before any code was written. The scope *bullet* had drifted past the acceptance
+  criterion. Checking the acceptance criterion rather than the task list is what turned an
+  hour of speculative documentation into a decision. **Read the Done-when before building
+  the last item on the list.**
