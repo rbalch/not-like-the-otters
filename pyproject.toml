@@ -11,6 +11,7 @@ dev = [
     "pytest>=8.4.0",
     "pyyaml>=6.0.0",
     "ruff>=0.15.0",
+    "tinycss2>=1.5.1",
     "ty>=0.0.14",
 ]
 
@@ -39,10 +40,10 @@ quote-style = "single"
 [tool.ty.environment]
 # The governance scripts are executables, not an installed package, so ty needs the
 # same search path pytest gets from `pythonpath` below.
-extra-paths = ["governance/scripts"]
+extra-paths = ["governance/scripts", "controls/fitness"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "governance/scripts"]
+pythonpath = ["src", "governance/scripts", "controls/fitness"]
 addopts = "-ra --strict-markers --strict-config"
 xfail_strict = true

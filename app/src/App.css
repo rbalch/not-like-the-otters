@@ -19,5 +19,5 @@
 }
 
 #decisions .error {
-  color: #b3261e;
+  color: var(--color-danger);
 }
