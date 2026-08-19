@@ -368,6 +368,35 @@ and forcing a harness observation into one loses what makes it interesting.
   a four-sighting finding that should still never become a control is worth more to the
   experiment than another rule.
 
+### F-18 — Hand-pruned generated output, documented in prose but not enforced
+
+- **Date:** 2026-08-19
+- **Bin:** 2
+- **Claim:** Where generated output is deliberately trimmed before committing, the trim
+  must be enforced by a mechanism the regenerating command cannot undo silently — an
+  ignore rule or a build target — not by a prose note asking the next person to remember.
+- **Sightings:** 1
+- **Action:** soft — enforced in this close-out, no control yet
+- **Notes:** M2.5. `tauri icon` emits Android and iOS icon sets unconditionally; there is
+  no flag to restrict it to desktop (`-p/--png` disables the `.icns`/`.ico` set too). For
+  a desktop-only app with packaging out of scope, those are 1.3 MB of the 3.1 MB it
+  produced, so they were deleted by hand and a `src-tauri/icons/README.md` was added
+  saying what generated the set and that re-running recreates them.
+  **The prose was the whole enforcement**, and `AGENTS.md` says plainly to *"treat
+  generated artifacts as build output: change the source and regenerate"* — a rule this
+  cuts against by construction. Any future `tauri icon` run repopulates both directories,
+  and they then sit in `git status` as untracked files, one careless `git add -A` from
+  being committed by someone with no idea they were pruned on purpose.
+  Boundary review caught it and proposed the cheap durable fix rather than just noting the
+  risk: two `.gitignore` lines. Applied. Regenerated directories are now ignored rather
+  than inviting, and the README explains *why* instead of being the only thing standing
+  between the repo and 1.3 MB of dead weight.
+  The generalisable shape: **a comment is not a control.** Whenever the answer to "what
+  stops this coming back?" is "someone will read the note", that is a soft layer pretending
+  to be a hard one. Genuinely machine-checkable in principle — a control could assert that
+  any directory named in a "do not commit" note is also matched by an ignore rule — but
+  that is one sighting and a fiddly rule. Held.
+
 ### F-11 — "Vendored" as grounds for removing a file from gate surface
 
 - **Date:** 2026-08-18

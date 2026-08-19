@@ -9,7 +9,7 @@ proof, not a finished port.
 | M2.2 adherence enforcement — DEC-1 + fitness control | **done** (`762566e`…`10d2f0e`) |
 | M2.3 port one component (`table` → `.tsx`) with a test | **done** (`bd2a3df`…`6d24cac`) |
 | M2.4 otters into the app, green one as brand mark | **done** (`73302a9`…`5863aa4`) |
-| M2.5 app icon — crop, plate, `tauri icon` | not started |
+| M2.5 app icon — crop, plate, `tauri icon` | **done** (`63ea545`, `d90479e`) |
 | M2.6 re-sync procedure and the tier-3 fork point | not started |
 
 ## Goal
@@ -601,3 +601,104 @@ The filter is still skipped, on two reasons that survive the correction:
 
 **Human-only gates left:** none. The window must be seen on a machine with a display — the
 container has no compositor — but `npm run tauri dev` on the host is the whole check.
+
+## Manual QA — M2.5 (the app icon)
+
+Run from `/app`. Every command was run as written and passed at the M2.5 close-out.
+
+```sh
+make check ; echo "EXIT=$?"                    # expect EXIT=0
+du -sh src-tauri/icons/                        # expect ~1.8M
+ls -d src-tauri/icons/android src-tauri/icons/ios 2>&1   # expect "No such file"
+```
+
+**Every path the bundler names must exist** — `tauri.conf.json`'s `bundle.icon` is an
+explicit list of filenames, not a directory scan, so a missing one fails at bundle time
+rather than here:
+
+```sh
+python3 -c "
+import json,os
+for p in json.load(open('src-tauri/tauri.conf.json'))['bundle']['icon']:
+    f=os.path.join('src-tauri',p); print(('OK  ' if os.path.isfile(f) else 'MISS'), p)
+"
+```
+Expect five `OK` lines.
+
+**Look at it at real size — this is the only check that decides whether an icon works.**
+Not at 1024, where everything looks fine:
+
+```sh
+uv run --with pillow python -c "
+from PIL import Image
+im = Image.open('src-tauri/icons/32x32.png').convert('RGB')
+im.resize((320,320), Image.NEAREST).save('/tmp/icon32.png')
+Image.open('src-tauri/icons/128x128.png').convert('RGB').resize((16,16), Image.LANCZOS) \
+     .resize((320,320), Image.NEAREST).save('/tmp/icon16.png')
+"
+```
+
+Open `/tmp/icon32.png` and `/tmp/icon16.png`. At **32 px** the otter's head, eye, whiskers
+and nested crescent body-curl should all be distinguishable. At **16 px** expect a
+distinctive crescent swirl, not a legible otter — that is normal and is the accepted
+outcome, not a defect.
+
+**A regenerated mobile set must not reappear as committable:**
+
+```sh
+mkdir -p src-tauri/icons/android/x && touch src-tauri/icons/android/x/y.png
+git status --porcelain --untracked-files=all src-tauri/icons/   # expect NO output
+rm -rf src-tauri/icons/android
+```
+
+Empty output means `.gitignore` is catching it. Output means the ignore rules regressed and
+1.3 MB of mobile icons is one `git add -A` from being committed — see ledger **F-18**.
+
+### Regenerating the icon
+
+```sh
+# 1. crop the mark out of the mockup, plate it, scale to 1024
+uv run --with pillow python -c "
+from PIL import Image
+src = Image.open('assets/brand/otter-icon-1024.png').convert('RGBA')
+sq  = src.crop((164, 124, 892, 852)).resize((1024,1024), Image.LANCZOS)   # 728x728 @ (164,124)
+plate = Image.new('RGBA', (1024,1024), '#f3f2f2ff')
+plate.alpha_composite(sq)
+plate.convert('RGB').save('/tmp/otter-icon-plated.png')
+"
+
+# 2. generate — note: `npm run tauri` from the REPO ROOT. There is no `tauri`
+#    script in app/package.json, and it is `tauri`, not `cargo tauri`.
+npm run tauri -- icon /tmp/otter-icon-plated.png
+
+# 3. delete the mobile sets it emits unconditionally (no flag suppresses them;
+#    `-p/--png` would disable the .icns/.ico set too). .gitignore now catches
+#    them, so this is tidiness rather than the safety net.
+rm -rf src-tauri/icons/android src-tauri/icons/ios
+```
+
+The crop geometry is derived, not guessed: the mark's bbox in the source is
+`x 288..768, y 212..765` (stable across dark-pixel thresholds 30–50; at 60 the plate's
+anti-aliased edge pulls it out to the full frame). Squaring off the larger dimension with
+12% margin per side gives `728` at offset `(164, 124)`, and final measured margins are
+17.1 / 17.0 / 12.1 / 11.9 %. An earlier attempt padded off the height only and left ~5%
+top and bottom, which visibly crowded the corners at 32 px.
+
+**Human-only gate, not simulated:** nobody has run a real `tauri build`. The claim that
+`src-tauri/icons/README.md` cannot break bundling rests on `bundle.icon` being a
+schema-typed array of explicit filenames with no directory-scan or `resources` mechanism
+that could sweep it in — sound, and independently confirmed against the installed CLI's
+`config.schema.json`, but structural rather than empirical. On a host with a display, run
+once:
+
+```sh
+npm run tauri -- build --no-bundle ; echo "EXIT=$?"
+git checkout -- src-tauri/Cargo.toml    # a real build adds `features = []`; expected, not drift
+```
+
+**Left deliberately undone:** a dark-plate variant (mark inverted to white on `#201f1d`,
+Classical's `--color-text`) was generated for comparison and not installed. The light plate
+ships. Both read comparably at 32 px; the dark one has more presence against a light
+background and matches the otters' hoodie-and-code-rain look, the light one is the more
+conventional app-icon treatment. Switching is a one-line change to the plate colour in step
+1 above plus a regeneration.
