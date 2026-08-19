@@ -66,3 +66,18 @@ review.json
 *.pot
 docs/_build/
 target/
+
+# Brand assets — human-supplied originals (otter-*.png masters, resized/
+# intermediates, icon candidates). Kept locally, NOT committed: only the
+# downscaled derivatives the app imports (app/src/assets/otter-*.png) are
+# tracked. See docs/milestones/M2.
+#
+# One deliberate exception: otter-icon-1024.png is the source `tauri icon`
+# consumes to generate src-tauri/icons/, so it is a build input and has to
+# survive a fresh clone. Git cannot re-include a file whose parent directory
+# is excluded, hence the /assets/* + unignore-the-path-components form
+# rather than a bare /assets/.
+/assets/*
+!/assets/brand/
+/assets/brand/*
+!/assets/brand/otter-icon-1024.png

@@ -8,7 +8,7 @@ proof, not a finished port.
 | M2.1 tier 1 — tokens, vendored fonts, window on Classical | **done** (`4c8942a`, `ac2505c`) |
 | M2.2 adherence enforcement — DEC-1 + fitness control | **done** (`762566e`…`10d2f0e`) |
 | M2.3 port one component (`table` → `.tsx`) with a test | **done** (`bd2a3df`…`6d24cac`) |
-| M2.4 otters into the app, green one as brand mark | not started |
+| M2.4 otters into the app, green one as brand mark | **done** (`73302a9`…`5863aa4`) |
 | M2.5 app icon — crop, plate, `tauri icon` | not started |
 | M2.6 re-sync procedure and the tier-3 fork point | not started |
 
@@ -495,3 +495,109 @@ a real `<table>`) held across the port.
   `.table` defines. Everything `.table`/`.tag`/`.text-muted` already styled (width,
   border-collapse, padding, dividers, hover tint) was deleted from `App.css` once
   `DecisionTable` adopted those classes.
+
+## Manual QA — M2.4 (the otters as the window's brand mark)
+
+Run from `/app`. Every command was run as written and passed at `5863aa4`.
+
+```sh
+make check ; echo "EXIT=$?"                    # expect EXIT=0
+npm run test --prefix app                      # expect 17 passed, 3 files
+```
+
+**What to look at with your own eyes.** Launch the app:
+
+```sh
+npm run tauri dev
+```
+
+The green otter sits above "Governance decisions", 128 px, centred, in a `--color-surface`
+mat with a hairline `--color-divider` outline. **The green code rain must read as green,
+not brown** — see the `.plate` note below. Everything else is M2.1–M2.3's window.
+
+**The masters are not in git.** Only `assets/brand/otter-icon-1024.png` is tracked, because
+`tauri icon` needs it in M2.5. Everything else under `assets/` is ignored by `/assets/*` in
+`.gitignore` and lives only on this machine. **A fresh clone cannot regenerate the app
+assets** — it gets the committed 256 px derivatives and nothing else. That is a deliberate
+call (git keeps every version forever, and the pair is ~5 MB), and it means the command
+below is the only written record of how the committed PNGs were produced:
+
+```sh
+uv run --with pillow python -c "
+from PIL import Image
+for n in ('green','red'):
+    im = Image.open(f'assets/brand/otter-{n}.png').convert('RGB')
+    im.resize((256,256), Image.LANCZOS).save(f'app/src/assets/otter-{n}.png', optimize=True)
+"
+```
+
+Inputs are the untracked 1254×1254 masters. Outputs: 96,502 B and 100,022 B. 256 px is 2×
+the 128 px display size, for HiDPI. **Lanczos, not nearest-neighbour** — see the measured
+correction in the otter section above; these are continuous-tone renders, not pixel art.
+
+Three cheap checks:
+
+```sh
+# 1. both otters reach the bundle — the red one is unreferenced by any view until M1,
+#    so this is what stops it silently vanishing (ledger F-8)
+npm run build --prefix app && ls app/dist/assets/otter-*.png    # expect two files
+
+# 2. the ignore pattern is anchored — a bare `assets/` would match at ANY depth and
+#    silently swallow app/src/assets/. Note --no-index: plain check-ignore skips
+#    TRACKED files and reports them not-ignored regardless of the pattern.
+git check-ignore -q --no-index app/src/assets/otter-green.png ; echo "EXIT=$? (expect 1)"
+git check-ignore -q --no-index assets/brand/otter-red.png     ; echo "EXIT=$? (expect 0)"
+git ls-files assets/                                          # expect exactly one path
+
+# 3. alt text cannot drift from the image it describes (ledger F-17)
+grep -c "^    alt:" app/src/assets/otters.ts   # expect 2 — one per otter, beside its src
+```
+
+(The indent in check 3 is load-bearing: a bare `grep -c "alt:"` returns **3**, because the
+`OtterVariant` interface declares an `alt` field too. Counting that as an otter would make
+the check pass for the wrong reason — which is finding **F-16** in miniature, caught while
+writing this section.)
+
+Check 2 matters most and is the one a human should actually run: a wrong ignore pattern
+fails **silently and only on someone else's clone**, which is the worst shape available.
+
+### On `.plate`, and a number that was wrong
+
+`theme.json` sets `imageTreatment: "plate"`, and Classical's `.plate` applies
+`sepia(0.22) saturate(0.82) contrast(1.05)` plus a border and outline. The brand mark
+takes **only the framing**, via a local `.brand-mark` class in `App.css` — the filter is
+skipped.
+
+The first justification recorded for this was **wrong**, and the correction is the more
+useful artifact. It claimed the filter compressed the green/red hue separation by ~37%,
+measured over "non-background" pixels. But the code rain *is* the background, and it is the
+only place the two images differ — the face and hoodie are the same brown in both. So that
+measurement compared two near-identical things and found their hues collapsing, which is
+close to tautological. Measured where the signal actually lives:
+
+| region | before | after | collapse |
+|---|---|---|---|
+| body / fur (as originally sampled) | — | — | 37–66% |
+| whole image | 29.7° | 26.1° | 12% |
+| **code rain** | **91.5°** | **84.2°** | **~8%** |
+
+Three independent implementations agree on ~8%. **84° of separation survives — the filter
+never endangered the status light.** See ledger finding **F-16**, which records this as the
+fourth instance of one pattern: a precise, correct-looking measurement whose *subject* was
+wrong.
+
+The filter is still skipped, on two reasons that survive the correction:
+
+1. A status light should read as true green and true red, not tinted toward the system's
+   warm anchor. That is a brand judgement, not a technical constraint — applying `.plate`
+   as-is is defensible on the evidence and is a one-line change.
+2. Composing (`class="plate brand-mark"` with `filter: none`) would couple the mark to
+   `classical.css`, which a tier-1 re-sync overwrites — a future upstream change to the
+   plate's border would silently move the brand mark. Duplicating two declarations is
+   cheaper than that coupling.
+
+**This is the tier-3 fork point M2.6 documents**: not "the design system was wrong", but
+"here is exactly where it did not fit, here is the number, and here is what we kept."
+
+**Human-only gates left:** none. The window must be seen on a machine with a display — the
+container has no compositor — but `npm run tauri dev` on the host is the whole check.

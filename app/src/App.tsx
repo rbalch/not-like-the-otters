@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import { fetchDecisions, type Decision } from './lib/decisions'
 import DecisionTable from './components/DecisionTable'
+import BrandMark from './components/BrandMark'
 
 type LoadState =
   | { status: 'loading' }
@@ -32,6 +33,7 @@ function App() {
 
   return (
     <main id="decisions">
+      <BrandMark />
       <h1>Governance decisions</h1>
 
       {state.status === 'loading' && <p role="status">Loading decisions…</p>}

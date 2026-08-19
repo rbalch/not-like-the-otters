@@ -12,3 +12,26 @@
 #decisions .error {
   color: var(--color-danger);
 }
+
+/* Framing only, deliberately not Classical's `.plate` — see
+   docs/milestones/M2-claude-design-ingest.md, "otter" section.
+
+   `.plate` applies sepia(0.22) saturate(0.82). Measured in the code-rain
+   region, which is where the green/red distinction actually lives (the fur
+   is the same brown in both images), that filter costs ~8% of the hue
+   separation: 91.5deg -> 84.2deg. So it does NOT endanger the status
+   signal, and an earlier note here claiming otherwise was measuring the
+   otter's body rather than the rain.
+
+   The filter is skipped anyway, for two reasons that survive the
+   correction: the status light should read as true green / true red rather
+   than tinted toward the system's warm anchor, and composing with `.plate`
+   would couple this mark to a vendored file that a tier-1 re-sync
+   overwrites. Duplicating two declarations is cheaper than that coupling. */
+.brand-mark {
+  box-sizing: border-box;
+  border: 6px solid var(--color-surface);
+  outline: 1px solid var(--color-divider);
+  display: block;
+  margin: 0 auto var(--space-4);
+}

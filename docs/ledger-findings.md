@@ -307,6 +307,67 @@ and forcing a harness observation into one loses what makes it interesting.
   here because this suite is the **template every future tier-3 component port copies**. A
   gap in an example propagates; that is worth more attention than the same gap in a leaf.
 
+### F-17 — Alt text hardcoded independently of the image it describes
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** Where an image and its alt text both encode application state, they must be
+  selected in a single act — one lookup, one source — never as two independent literals.
+- **Sightings:** 1
+- **Action:** soft — fixed in `5863aa4`, no control yet
+- **Notes:** M2.4. `BrandMark.tsx` set `src={otters.calm}` and, separately,
+  `alt="Otter mascot, calm — ..."`. Correct today, and a trap for M1: whoever makes the
+  otter conditional changes the `src` and the alt text keeps saying "calm".
+  Rated minor by review as a forward-looking risk. The **consequence** deserves more than
+  minor, which is why it was fixed rather than carried: this alt text is not decorative,
+  it is the status light's only channel for a screen-reader user. Drift would silently
+  report the opposite of the truth to exactly the people who cannot see the picture — a
+  false success in the accessibility layer, where nothing else would ever contradict it.
+  Fixed by binding them: `otters` became `Record<'calm'|'alert', {src, alt}>`, so selecting
+  an otter selects its description, and the type forbids adding a key without both fields.
+  M1's job shrank to passing a key.
+  Genuinely machine-checkable in principle — a lint rule could flag a JSX `alt` string
+  literal in a component that also selects `src` from a keyed map — but that is one
+  sighting, narrow, and easy to write badly. Held.
+
+### F-16 — A measurement whose subject is wrong, reported with confident precision
+
+- **Date:** 2026-08-18
+- **Bin:** 3
+- **Claim:** the checkable restatement — "a measurement must sample the region carrying the
+  property being claimed" — cannot be machine-checked, because only the author knows what
+  they meant to measure. This is the same wall F-2 hit.
+- **Sightings:** **4** (see below — and it still should not become a control)
+- **Action:** noted. Not a control; the counter-measure is procedural and already in place.
+- **Notes:** M2.4. The builder justified forking from Classical's `.plate` by reporting the
+  sepia filter compressed the otters' green/red hue separation 40.1° → 25.3°, ~37%. It
+  sampled "non-background" pixels — but **the code rain IS the background, and it is the
+  only place the two images differ.** Face and hoodie are the same brown in both, so the
+  measurement compared two near-identical things and found their hues collapsing, which is
+  close to tautological. Re-measured in the rain: **91.5° → 84.2°, ~8%.** 84° of separation
+  survives; the filter never endangered the status light.
+  Three independent implementations agree on the corrected figure — mine (pure-Python,
+  8%), the correctness reviewer's (PIL/numpy with its own masks, 96.9° → 89.8°, 7.3%) — and
+  the reviewer's body-only mask reproduced a **65.6%** collapse, directly corroborating
+  *why* the original number came out inflated.
+  **This is the fourth appearance of one pattern, in four costumes:**
+  | | the measurement | its subject was |
+  |---|---|---|
+  | F-2 | `tauri info` echoing `frontendDist` | the one path already correct |
+  | F-5 | `tsc --noEmit` exiting 0 | zero files |
+  | M2.4 | `git check-ignore` on `otter-green.png` | a *tracked* file, which it skips |
+  | F-16 | hue separation of "non-background" pixels | the region carrying no signal |
+  Each produced a real, precise, correct-looking number answering a question nobody asked.
+  **None was caught by the gate; every one was caught by someone re-running it
+  differently.** That is the strongest argument this project has yet produced for the
+  loop's redundancy — better than any individual bug it found.
+  Held at Bin 3 deliberately, and the sighting count is *not* grounds to promote. A control
+  cannot know which region an author intended to sample. The working counter-measure is
+  already doctrine: **verify by execution, and forbid the reviewer from reusing the
+  implementer's cases** — which is precisely how three of these four were caught. Recording
+  a four-sighting finding that should still never become a control is worth more to the
+  experiment than another rule.
+
 ### F-11 — "Vendored" as grounds for removing a file from gate surface
 
 - **Date:** 2026-08-18
