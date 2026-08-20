@@ -5,3 +5,4 @@
 These rules are enforced by CI. Violating one fails the build. To change a rule you must supersede its decision — author a replacement, mark this one superseded, update the control and its pragma, and rebuild this view. Never edit code to evade a control.
 
 - **[DEC-0] No file under `governance/views/` may be named `AGENTS.md`, and `governance/views/RULES.md` must exist.** (block)
+- **[DEC-1] No file under `app/src/` may contain a raw hex colour literal, or a `font-family` naming a family outside Cormorant Garamond and Lora. The vendored token file `app/src/classical.css` and the local token file `app/src/tokens-local.css` are exempt — they are where those literals are supposed to live.** (block)

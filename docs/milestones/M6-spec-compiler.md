@@ -1,4 +1,4 @@
-# M3 — The spec compiler
+# M6 — The spec compiler
 
 **Status:** not started. Deliberately last.
 

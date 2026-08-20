@@ -28,4 +28,5 @@ decision plus a control that goes red on the logged examples and green on clean 
 
 ## Notes
 
-Built before M2 even though M2 feeds it. Hand-fed until then.
+Built before M5 (the outer gate) even though M5 feeds it. Hand-fed until then — and at
+current volume hand-feeding is not straining: 8 findings, none past two sightings.

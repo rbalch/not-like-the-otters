@@ -1,3 +1,9 @@
 dist
 node_modules
 package-lock.json
+
+# Vendored verbatim from the Classical design system (DesignSync project
+# 4e7f38e1-0016-4587-8a27-3aab041b2cca). Kept byte-identical to source except
+# for the one intentional line-2 edit (local @font-face instead of the
+# remote @import) so a future re-sync can diff cleanly against source.
+src/classical.css

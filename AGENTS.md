@@ -86,6 +86,21 @@ Skipping triage means running the experiment while discarding the data.
 | `control-author` (agent) | Turn a thrice-sighted Bin 2 finding into a decision plus control. |
 | `ledger-ops` (skill) | Harness mechanics: author, supersede, add a control, debug a red gate. |
 
+### Tests come first for anything that decides what counts as a violation
+
+**A control, parser, validator or matcher is written tests-first.** Cases derived from the
+spec — for a control, the decision's `## Rule` text — written and watched to fail *before*
+the implementation exists, and committed as a suite inside `make check`. Throwaway probes
+do not count; they prove one round and then vanish.
+
+This is the "spec-first tests" pillar below made operational. It binds only where the
+specification is the hard part — ordinary feature work stays a judgement call.
+
+DEC-1's control shipped wrong three times, each round with passing negative tests and a
+green gate, because each round wrote its tests from the same model that produced its code.
+Tests-first is necessary and not sufficient: pair it with a reviewer told to invent its own
+violations and forbidden from reusing the builder's. See `build-loop` for the full form.
+
 ### When not to use the loop
 
 A one-line fix, a doc edit, or a question. The loop costs several subagent round-trips;
@@ -120,7 +135,7 @@ change was made.
   installed in `dev.Dockerfile` on purpose. Do not "simplify" it back to a feature.
 - **The repo is `/app` here and `/home/ryan/code/not-like-the-otters` on the host.** Git
   worktrees record absolute paths in both directions, so a worktree created on one side
-  is broken on the other. This matters at M2: `no-mistakes` creates disposable worktrees,
+  is broken on the other. This matters at M5: `no-mistakes` creates disposable worktrees,
   so it must run consistently on one side of that boundary.
 - **`make init` runs on the host, not in here.** It is guarded and will refuse.
 - **`tauri.conf.json` uses two different base directories, and mixing them up is silent.**

@@ -151,6 +151,299 @@ and forcing a harness observation into one loses what makes it interesting.
   Bin 1: a bundler or a dead-code linter catches this class, and reaching for the ledger
   here would be using a decision to do a linter's job.
 
+### F-9 — A borrowed lint config names rules its linter does not implement
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** Every rule named in a lint config this repo adopts must be implemented by the
+  linter that actually runs it, and must be set to a severity that fails the build.
+  Adopting a config on the strength of reading it is not adoption.
+- **Sightings:** 1
+- **Action:** soft — noted, no control yet. Enforcement rerouted to a fitness control.
+- **Notes:** M2.1, found before any builder was dispatched. Classical's
+  `_adherence.oxlintrc.json` carries three real rules — no raw hex, no raw `px`, no
+  non-system font — and all three are expressed as `no-restricted-syntax` with regex AST
+  selectors. **oxlint 1.78 does not implement `no-restricted-syntax` at all**; the config
+  does not merely under-enforce, it fails to parse: `Rule 'no-restricted-syntax' not found
+  in plugin 'eslint'`. The other two rules parse but ship with empty `forbid: []` /
+  `patterns: []`, so they are no-ops by construction. The milestone doc had predicted a
+  *weaker* version of this — that the rules were `"warn"` and warnings do not fail a build
+  — and promoting them to `"error"` would have fixed nothing. Same family as F-5: a check
+  that reads as enforcement and enforces zero.
+  Two things make this Bin 2 rather than Bin 1. oxlint failed **closed** here, which is
+  the good case and is why it was caught in minutes; but nothing in the gate would have
+  noticed a config sitting in the tree that was never wired into a command at all. And the
+  claim generalises past linters to any borrowed policy artifact.
+  Related and worth recording: **Classical's own `styles.css` would fail Classical's own
+  adherence rules** — it is full of raw `px` (`h1 { font-size: 42px }`). A config whose
+  own source cannot pass it is a sign the rules were authored for consumers and never run
+  against the system. This is why M2.2's control is scoped to `.tsx` and leaves CSS to the
+  token file, which is also exactly what M2's "Done when" asked for.
+
+### F-10 — One webfont request silently collapses distinct weights into one file
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** Vendored font files for distinct declared weights must be distinct files, and
+  each must carry the `OS/2.usWeightClass` its `@font-face` rule claims.
+- **Sightings:** 1
+- **Action:** soft — caught by the builder before it landed, no control yet
+- **Notes:** M2.1. A combined Google Fonts request
+  (`family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;600`) returns the **same**
+  woff2 URL for both weights of a family, because Google serves a shared variable-font
+  instance. Fetching per-weight returns four genuinely distinct files. The builder found
+  this itself and worked around it correctly.
+  Logged because of the **failure direction**, which is the worst available: had it not
+  been caught, four files would exist, every `@font-face` would resolve, the build would
+  succeed, every gate stage would pass, and the semibold headings the design specifies
+  would silently render at regular weight. Nothing anywhere would go red. Crisply
+  machine-checkable — parse `usWeightClass` from each vendored face and compare against
+  the `font-weight` its `@font-face` declares — which is what makes it Bin 2 and not
+  taste. Held at one sighting.
+
+### F-5a — `prettier --check` reports success over an empty file set
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Sightings:** counted under **F-5** as its second sighting — same defect, second tool
+- **Claim:** F-5's, generalised past `tsc`: a command used as verification must be shown
+  to examine a non-zero number of files. A tool reporting success is not evidence it ran.
+- **Action:** soft — kept out of the M2.1 Manual QA, which now explains why
+- **Notes:** M2.1 close-out, found while running my own Manual QA steps before shipping
+  them. `npx prettier --check src/classical.css`, aimed straight at a file listed in
+  `.prettierignore`, prints `All matched files use Prettier code style!` and exits 0 — it
+  matched nothing and reported that as a pass. I had nearly written it into the Manual QA
+  as a positive check, which is the F-5 mistake exactly repeated: **the M0.1 Manual QA
+  shipped a false-green command that would have passed over arbitrarily broken code.**
+  Caught this time only because F-5 turned "run your own QA steps" into a habit — which is
+  the ledger doing the one thing it exists to do, on a finding from a previous milestone.
+  Filed under F-5 rather than as a new finding. It is the same defect — a check exiting 0
+  having inspected zero files — and padding a sighting count with a second instance of one
+  bug is how the rule of three gets gamed. F-5 therefore stands at **two** sightings: one
+  in `tsc`, one in `prettier`. **A third should graduate it**, and the control is already
+  obvious: scan the gate and the docs for verification commands that can silently match an
+  empty set.
+
+### F-13 — A checker's two halves diverge on the same input structure
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** Where one control enforces two or more rules over the same input, every rule
+  must walk that input's structure identically. A structural shape handled by one half and
+  not another is a defect, not a design choice.
+- **Sightings:** 1 (three instances, one work item — counted once, see below)
+- **Action:** soft — fixed in `4949ca5`, now pinned by a shared test battery
+- **Notes:** M2.2. `design_adherence.py` enforces two halves of DEC-1: no raw hex, no
+  non-Classical font. Three of the six defects were the halves disagreeing about the same
+  CSS structure:
+  - the `font` shorthand was unrecognised while `font-family` was (`dbc9358`)
+  - property names were matched case-sensitively in the font half only (`e0a115d`)
+  - `var()` blanket-skipped the whole declaration in the font half, while the hex half
+    correctly recursed into `var()` fallbacks — so `color: var(--x, #123456)` was caught
+    and `font-family: var(--font-heading, Arial)` was not (`4949ca5`)
+  Each was found and fixed individually before the shape was visible. **Counted as one
+  sighting, not three** — they are one bug wearing three hats, and inflating the count
+  with instances of a single defect is exactly how the rule of three gets gamed (see
+  F-5a for the same call made the other way).
+  The fix that matters is not the three patches but `_STRUCTURAL_BATTERY`: 11 input shapes
+  (`var()` with and without fallback, `var()` in a comma list, nested `var()`, function
+  nesting, `!important`, uppercase property names, at-rule nesting, comment interference,
+  malformed input) run through **both** halves on the same snippet, asserting the expected
+  result for each even where a shape is only interesting for one. Divergence is now a test
+  failure rather than something only adversarial review can find.
+  Machine-checkable in principle — a control could assert that every scanner in a control
+  module shares one token-walking helper — but that is a rule about internal code shape,
+  the sighting count is one, and the test battery already closes it. Held.
+
+### F-14 — A finding's severity argument was wrong while the finding was right
+
+- **Date:** 2026-08-18
+- **Bin:** 3
+- **Claim:** none statable as a rule. "A reviewer's reasoning must be correct" is not
+  checkable, and demanding it would just move the judgement somewhere else.
+- **Sightings:** 1
+- **Action:** noted, deliberately not a control
+- **Notes:** M2.2 close. Final review found a genuine seventh fail-open — `scan_file`
+  returned `[]` on an undecodable file, so a `.css` holding `color: #ff0000` in invalid
+  UTF-8 reported `ok`, exit 0. It rated the finding **minor** on the grounds that
+  `make controls` has `lint` as a prerequisite, so oxlint rejects invalid-UTF-8 files
+  first — and it verified that mitigation by execution.
+  **The mitigation is false for the case reproduced: oxlint does not process `.css` at
+  all.** It covers `.tsx` and not CSS, and either way it is incidental Makefile ordering
+  rather than a property of the control — running the control directly loses it silently.
+  The finding was right, the severity reasoning was wrong, and the two came bundled with
+  the confident tone that a mitigation had been *checked*.
+  The lesson generalises past this instance: **"verify by execution" applies to a
+  reviewer's argument, not only to a builder's evidence.** A reviewer that runs commands
+  is not thereby correct about what those commands prove. Had the severity been accepted,
+  a known exit-0-on-failure path would have shipped, and the skill's hard rules forbid
+  exactly that — which is what caught it, not scepticism about the reviewer.
+  Bin 3 because the checkable restatement would be about the shape of arguments rather
+  than the shape of code. Logged because the failure mode — correct finding, wrong
+  severity, verified-sounding justification — is more dangerous than a wrong finding,
+  which review catches easily.
+
+### F-15 — A list-rendering test asserts presence, not correspondence
+
+- **Date:** 2026-08-18
+- **Bin:** 3
+- **Claim:** the checkable restatement — "a test rendering more than one item must not use
+  document-wide queries" — would fire on correct code constantly, since plenty of tests
+  legitimately query the document. Not statable as a rule worth enforcing.
+- **Sightings:** 1
+- **Action:** fixed in `6d24cac`, deliberately not a control
+- **Notes:** M2.3. `DecisionTable.test.tsx` asserted that the right values appeared
+  *somewhere on the page* and that row counts were right, but never that a given row held
+  its own cells **together**. A row/column transposition, or a `.map` pairing the wrong
+  decision to the wrong row, passed every case. Found by correctness review as its only
+  finding, scored 4/5.
+  Verified rather than assumed: I transposed the component independently (shifting each
+  row's title to the next decision's, a different break from the builder's) and **only 1
+  of 14 tests caught it.** The other 13 passed a demonstrably wrong component. That is the
+  finding in one number.
+  The fix is `within(row)` scoping instead of document-wide `getByText`, plus asserting
+  row order matches input order. Bin 3 because the rule cannot be stated without firing on
+  correct code — but it belongs in a review checklist, and it mattered disproportionately
+  here because this suite is the **template every future tier-3 component port copies**. A
+  gap in an example propagates; that is worth more attention than the same gap in a leaf.
+
+### F-17 — Alt text hardcoded independently of the image it describes
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** Where an image and its alt text both encode application state, they must be
+  selected in a single act — one lookup, one source — never as two independent literals.
+- **Sightings:** 1
+- **Action:** soft — fixed in `5863aa4`, no control yet
+- **Notes:** M2.4. `BrandMark.tsx` set `src={otters.calm}` and, separately,
+  `alt="Otter mascot, calm — ..."`. Correct today, and a trap for M1: whoever makes the
+  otter conditional changes the `src` and the alt text keeps saying "calm".
+  Rated minor by review as a forward-looking risk. The **consequence** deserves more than
+  minor, which is why it was fixed rather than carried: this alt text is not decorative,
+  it is the status light's only channel for a screen-reader user. Drift would silently
+  report the opposite of the truth to exactly the people who cannot see the picture — a
+  false success in the accessibility layer, where nothing else would ever contradict it.
+  Fixed by binding them: `otters` became `Record<'calm'|'alert', {src, alt}>`, so selecting
+  an otter selects its description, and the type forbids adding a key without both fields.
+  M1's job shrank to passing a key.
+  Genuinely machine-checkable in principle — a lint rule could flag a JSX `alt` string
+  literal in a component that also selects `src` from a keyed map — but that is one
+  sighting, narrow, and easy to write badly. Held.
+
+### F-16 — A measurement whose subject is wrong, reported with confident precision
+
+- **Date:** 2026-08-18
+- **Bin:** 3
+- **Claim:** the checkable restatement — "a measurement must sample the region carrying the
+  property being claimed" — cannot be machine-checked, because only the author knows what
+  they meant to measure. This is the same wall F-2 hit.
+- **Sightings:** **4** (see below — and it still should not become a control)
+- **Action:** noted. Not a control; the counter-measure is procedural and already in place.
+- **Notes:** M2.4. The builder justified forking from Classical's `.plate` by reporting the
+  sepia filter compressed the otters' green/red hue separation 40.1° → 25.3°, ~37%. It
+  sampled "non-background" pixels — but **the code rain IS the background, and it is the
+  only place the two images differ.** Face and hoodie are the same brown in both, so the
+  measurement compared two near-identical things and found their hues collapsing, which is
+  close to tautological. Re-measured in the rain: **91.5° → 84.2°, ~8%.** 84° of separation
+  survives; the filter never endangered the status light.
+  Three independent implementations agree on the corrected figure — mine (pure-Python,
+  8%), the correctness reviewer's (PIL/numpy with its own masks, 96.9° → 89.8°, 7.3%) — and
+  the reviewer's body-only mask reproduced a **65.6%** collapse, directly corroborating
+  *why* the original number came out inflated.
+  **This is the fourth appearance of one pattern, in four costumes:**
+  | | the measurement | its subject was |
+  |---|---|---|
+  | F-2 | `tauri info` echoing `frontendDist` | the one path already correct |
+  | F-5 | `tsc --noEmit` exiting 0 | zero files |
+  | M2.4 | `git check-ignore` on `otter-green.png` | a *tracked* file, which it skips |
+  | F-16 | hue separation of "non-background" pixels | the region carrying no signal |
+  Each produced a real, precise, correct-looking number answering a question nobody asked.
+  **None was caught by the gate; every one was caught by someone re-running it
+  differently.** That is the strongest argument this project has yet produced for the
+  loop's redundancy — better than any individual bug it found.
+  Held at Bin 3 deliberately, and the sighting count is *not* grounds to promote. A control
+  cannot know which region an author intended to sample. The working counter-measure is
+  already doctrine: **verify by execution, and forbid the reviewer from reusing the
+  implementer's cases** — which is precisely how three of these four were caught. Recording
+  a four-sighting finding that should still never become a control is worth more to the
+  experiment than another rule.
+
+### F-18 — Hand-pruned generated output, documented in prose but not enforced
+
+- **Date:** 2026-08-19
+- **Bin:** 2
+- **Claim:** Where generated output is deliberately trimmed before committing, the trim
+  must be enforced by a mechanism the regenerating command cannot undo silently — an
+  ignore rule or a build target — not by a prose note asking the next person to remember.
+- **Sightings:** 1
+- **Action:** soft — enforced in this close-out, no control yet
+- **Notes:** M2.5. `tauri icon` emits Android and iOS icon sets unconditionally; there is
+  no flag to restrict it to desktop (`-p/--png` disables the `.icns`/`.ico` set too). For
+  a desktop-only app with packaging out of scope, those are 1.3 MB of the 3.1 MB it
+  produced, so they were deleted by hand and a `src-tauri/icons/README.md` was added
+  saying what generated the set and that re-running recreates them.
+  **The prose was the whole enforcement**, and `AGENTS.md` says plainly to *"treat
+  generated artifacts as build output: change the source and regenerate"* — a rule this
+  cuts against by construction. Any future `tauri icon` run repopulates both directories,
+  and they then sit in `git status` as untracked files, one careless `git add -A` from
+  being committed by someone with no idea they were pruned on purpose.
+  Boundary review caught it and proposed the cheap durable fix rather than just noting the
+  risk: two `.gitignore` lines. Applied. Regenerated directories are now ignored rather
+  than inviting, and the README explains *why* instead of being the only thing standing
+  between the repo and 1.3 MB of dead weight.
+  The generalisable shape: **a comment is not a control.** Whenever the answer to "what
+  stops this coming back?" is "someone will read the note", that is a soft layer pretending
+  to be a hard one. Genuinely machine-checkable in principle — a control could assert that
+  any directory named in a "do not commit" note is also matched by an ignore rule — but
+  that is one sighting and a fiddly rule. Held.
+
+### F-11 — "Vendored" as grounds for removing a file from gate surface
+
+- **Date:** 2026-08-18
+- **Bin:** 2
+- **Claim:** A file may be exempted from a gate tool only as a single named path carrying
+  an inline rationale. A directory, a glob, or a bare path with no stated reason is not an
+  exemption, it is an opt-out.
+- **Sightings:** 1
+- **Action:** soft — the instance was judged legitimate and kept. Logged as a watch.
+- **Notes:** M2.1. The builder added `src/classical.css` to `app/.prettierignore` so the
+  vendored token file stays byte-identical to its upstream source and a future re-sync can
+  diff cleanly. The boundary reviewer did not take the rationale on trust: it removed the
+  entry, ran `prettier --write`, measured a 516-line reformat, and restored both files.
+  So the justification is real, and the exemption is narrow, named, commented, and touches
+  only formatting — oxlint and `tsc -b` do not process `.css` regardless.
+  **Approved, and logged anyway.** M2's own text says "everything ingested is gate
+  surface," and this is a knowing exception to it. The finding is not this instance but the
+  word: "vendored" is precisely the justification that gets reached for a second and third
+  time, at steadily lower quality. The reviewer raised it as a candidate sighting itself,
+  which is the harness working. Watch for a second exemption justified as vendored —
+  especially a glob, or one with no inline reason, or one reaching past formatting into
+  lint or typecheck.
+
+### F-12 — A doc asserting measured facts about assets that were later replaced
+
+- **Date:** 2026-08-18
+- **Bin:** 3
+- **Claim:** none worth stating as a rule. The checkable form — "every dimension or format
+  claim a doc makes about a tracked binary must match the file" — is real but so narrow it
+  would be ceremony, and it would not have caught this case anyway.
+- **Sightings:** 1
+- **Action:** noted, deliberately not a control. Doc corrected in this close-out.
+- **Notes:** M2. The milestone described `assets/brand/otter-icon.png` as 1024x1024 RGBA,
+  73.7% transparent, mean opaque colour `rgb(255,255,255)`, 31 KB — a white silhouette
+  needing a dark plate composited under it. The file on disk was **992x1068 RGB with no
+  alpha channel at all**, 628 KB: a black otter mark on a white plate, photographed inside
+  a grey mockup surround. The measurements were honest when written; the asset was replaced
+  afterwards and the prose was not. The doc also asserted the otter portraits were pixel
+  art on a ~209x209 grid needing nearest-neighbour scaling at integer factors — measured,
+  they carry ~47k unique colours and show no block grid at any factor, so the constraint
+  was guarding a property the files never had.
+  Bin 3 because the interesting part is not machine-checkable: the doc was *more* credible
+  for containing precise numbers, and precision is what made it persuasive enough to act
+  on. A builder handed that section would have composited a plate under an image that
+  needed cropping instead. The defence is measuring assets at the point of use rather than
+  trusting a prior measurement, which is a habit, not a rule.
+
 ---
 
 ## Harness findings
@@ -229,6 +522,143 @@ agent output, and forcing a harness observation into one loses what makes it int
   plausible rule, twice-sighted, that would have fired on correct code forever. Recording
   it as evidence the gate on graduation is load-bearing rather than ceremonial.
 
+### H-7 — Testing the spec's assumptions before dispatching, and it paid twice
+
+- **Date:** 2026-08-18
+- **Notes:** M2.1. The orchestrator ran the milestone's own claims against reality before
+  briefing anyone: executed the borrowed lint config through oxlint (F-9), and measured the
+  brand assets rather than reading their description (F-12). Both claims were wrong, and
+  both would have been discovered by a builder mid-item, when the cost of changing
+  direction is highest and the pull to make the doc's plan work anyway is strongest.
+  The M2 doc is unusually careful — it explicitly warns about the `warn`-versus-`error`
+  trap in the adherence config — and it was **still** wrong about that config, in the same
+  direction, just further along than it guessed. Being well written is not what makes a
+  spec true. Cost: roughly fifteen minutes of measurement before the first dispatch.
+  **Reusable form:** before briefing, run the spec's external dependencies rather than
+  reading them — execute the borrowed config, measure the binary, call the API once.
+  A spec is a hypothesis about the world, and the loop has no other step that tests it.
+
+### H-8 — The reviewers earned their cost differently, and neither was redundant
+
+- **Date:** 2026-08-18
+- **Notes:** M2.1. Both returned APPROVE 5/5 with zero findings, which looks on its face
+  like a round that did not need reviewing. It is worth recording why that reading is
+  wrong. Each was pointed at the round's one real risk and each **verified by execution
+  rather than by reading**: the boundary reviewer proved the `.prettierignore` rationale by
+  deleting the entry, running the formatter, and measuring the 516-line reformat before
+  restoring; the correctness reviewer installed `fontTools` in a throwaway venv and parsed
+  `OS/2.usWeightClass` and the `glyf` tables out of all four woff2 files to prove the
+  semibold faces were not duplicated regulars (F-10).
+  Neither answer was available by inspection, and the second is the one that mattered —
+  had the weights been duplicated, every stage of the gate would still have been green.
+  An approval that came from running something is a different object from an approval that
+  came from reading something, even when the verdict and the score are identical. Recorded
+  because a run of clean rounds is exactly when the loop starts to feel like ceremony.
+
+### H-9 — The process documented a pillar it never enforced, and it cost three rounds
+
+- **Date:** 2026-08-18
+- **Notes:** M2.2. The DEC-1 adherence control shipped wrong **three times in a row**, and
+  every round had passing negative tests and a green `make check`:
+  1. assumed which characters precede a hex colour → missed `border: 1px solid #fff` and
+     4 other ordinary shapes, 5 of 10
+  2. assumed CSS has no quoted braces and no selectors inside at-rules → `content: "}"`
+     desynced the depth counter, and `#fff123` inside `@media` was flagged as a colour
+  3. assumed unparseable input was safe to skip → **failed open**, reporting `ok` over a
+     file containing a raw hex
+  Each round replaced one unstated assumption with different unstated assumptions, then
+  wrote its negative tests from the same mental model that produced the code — so the
+  tests confirmed the assumptions rather than challenging them. **The gate caught none of
+  it.** What caught it was the orchestrator probing by hand, then a boundary reviewer told
+  explicitly not to reuse those probes, then the builder's own honest disclosure of a gap
+  it had reasoned its way past.
+  **The finding is not the three bugs. It is that `AGENTS.md` line ~195 already listed
+  "spec-first tests" as one of the four things this project exists to test, and the
+  `build-loop` skill never operationalised it** — every mention of tests in the skill was
+  after the fact (the reviewer judges tests; the builder gets a verification list). Nothing
+  said write them first. The gap between what a project says it does and what its process
+  actually enforces is the failure this whole repo is about, and here it happened to the
+  harness itself. Filed unbinned: it is an observation about the harness, not a dislike of
+  agent output, and forcing it into a bin would lose exactly that.
+  **Fixed in this close-out** — the `build-loop` skill now requires tests-first for
+  controls, parsers, validators and matchers (cases derived from the decision's Rule text,
+  watched to fail, committed into `make check`), plus an adversarial clause forbidding the
+  reviewer from reusing the builder's cases. `AGENTS.md` carries the short form.
+  Deliberately **not** a decision: "were these tests written first" is not machine-checkable,
+  and manufacturing a control for it is the failure mode the harness warns against. The
+  checkable proxy — every `controls/fitness/*.py` has a matching `tests/test_*.py` — is a
+  reasonable future control at one sighting, but it would verify the artifact rather than
+  the discipline. If a second control ships without a durable suite, that is sighting two.
+  **The falsifiable claim, recorded so this can be judged rather than believed:** a control
+  or parser work item written tests-first should close in **at most one fix round**. The
+  baseline from today is unusually clean because the two work items sit on either side of
+  the boundary — M2.1 (vendoring and wiring; the spec was "copy this file, strip that
+  line") took **zero** fix rounds and was approved 5/5 by both reviewers first pass, while
+  M2.2 (a matcher, where deciding what counts as a violation *is* the work) took **three**.
+  If the next control still takes three, tests-first is not the fix and the right response
+  is to record that, not to keep the rule.
+- **Final tally, added at close.** The work item ran to **five fix rounds and seven
+  defects**, not the three this entry was written after. The later ones arrived *after*
+  the tests-first rule landed at `48b079e`, and the rule did not prevent them — it made
+  them cheaper, because each round wrote its cases red first and every fix stayed pinned
+  (35 → 49 → 68 → 81 tests). Recorded plainly: **tests-first shortened nothing here.**
+  The claim above is about a work item written tests-first *from the start*; M2.2 was
+  retrofitted, so it does not test the claim and must not be read as evidence for it.
+  What actually found the seven defects is the more useful result, because no two came
+  from the same source:
+
+  | # | defect | found by |
+  |---|---|---|
+  | 1 | preceding-character heuristic, 5 of 10 missed | orchestrator probe |
+  | 2 | `content: "}"` desyncs brace depth | boundary review |
+  | 3 | `#fff123` in `@media` flagged as a colour | boundary review |
+  | 4 | `font` shorthand bypass | boundary review |
+  | 5 | fail-open on unparseable CSS | builder self-disclosure |
+  | 6 | TS comment desync; case-sensitive font match | correctness review |
+  | 7 | `var()` blanket-skip in the font half | boundary re-review |
+  | 8 | fail-open on undecodable files | final review |
+
+  Four distinct discoverers, no two defects by the same method, and **`make check` was
+  green for every single one.** The single most transferable sentence from this work item:
+  *a control's gate passing tells you nothing about whether the control works.* The
+  redundancy of two reviewers plus an orchestrator pass looked like ceremony after M2.1
+  approved 5/5 twice; here it was the only thing standing between a green build and a
+  control that reported clean over real violations.
+  Cost, stated honestly rather than buried: five rounds and roughly 700k subagent tokens
+  on one control. That is a bad ratio and should not be normalised. The defensible reading
+  is that this control is a parser wearing a lint rule's clothing, and parsers are where
+  "looks right, is wrong" lives — it is the worst case, not the typical one. If an
+  ordinary control ever costs this, the harness is not paying for itself.
+
+### H-10 — The next work item cost one polish round, and it does not prove the claim
+
+- **Date:** 2026-08-18
+- **Notes:** M2.3, immediately after M2.2. Ported Classical's table to
+  `DecisionTable.tsx` with a Vitest suite. **Zero defects, one polish round, boundary 5/5
+  and correctness 4/5 → 5/5.** Against M2.2's five rounds and seven defects, the contrast
+  is stark enough to be misread, so recording plainly what it does and does not show.
+  **It does not test the H-9 claim.** That claim was specifically about *control or parser*
+  work items written tests-first closing in at most one fix round. M2.3 is a component
+  port — ordinary feature work, explicitly outside the scope the tests-first rule binds.
+  Reading it as evidence would be exactly the reasoning error the ledger exists to prevent:
+  a favourable result from an experiment that was not run. **The fair test is the next
+  control.**
+  What it does show, and it is narrower:
+  - The tier-1 ingest from M2.1 was thorough enough that a real component port needed
+    **no new tokens, no raw hex, and nothing Classical did not already define.** DEC-1 ran
+    clean against genuinely new app code on the first try. That is a real signal about the
+    quality of the ingest, not about the tests-first rule.
+  - **DEC-1 did its first productive work.** Boundary review did not trust that
+    `SRC_DIR.rglob('*')` reaches a new subdirectory — it planted a hex in
+    `app/src/components/` and confirmed the control caught it at the right file:line before
+    reverting. Five rounds of building that control bought a check that now runs on every
+    future component for free. The cost was front-loaded; the value is not.
+  - **Difficulty predicts round count better than process does.** M2.1 (mechanical) took
+    zero rounds, M2.3 (a component with one interesting branch) took one, M2.2 (a parser)
+    took five. The dominant variable across all three is how much of the work is deciding
+    what counts as correct — not which testing discipline was applied. Worth holding in
+    mind before crediting any process change for a cheap work item.
+
 <!--
 ### F-1 — <one-line description>
 - **Date:** YYYY-MM-DD
@@ -238,3 +668,30 @@ agent output, and forcing a harness observation into one loses what makes it int
 - **Action:** soft — noted, no control yet
 - **Notes:** <anything surprising about the harness itself>
 -->
+
+### H-11 — A milestone item declined, and why that is a result
+
+- **Date:** 2026-08-19
+- **Notes:** M2 close. M2.6 ("write down the re-sync procedure for tier 1 and the fork
+  point for tier 3") was dropped rather than built. Recording it because a declined item
+  is data, and because the reasoning generalises past this milestone.
+  Half of it was **already done** — the tier-3 fork points were written where the work
+  happened (Manual QA sections, F-15, F-16, F-17), with measurements attached, rather than
+  summarised later in prose. Writing the summary would have created a second, drifting
+  account of things already recorded once.
+  The other half was **declined on the human's argument**, which is the better one: *"I
+  think going forward I would do all this differently if I want to change it anyway."* If
+  the design changes meaningfully, the response is to redo the ingest with what was learned
+  — not to diff an old copy against a new one. A comparison tool would be built for a
+  future that probably arrives in a different shape.
+  A structural fact reinforced it: **re-sync cannot be automated here at all.** Reading the
+  Classical project requires the `DesignSync` agent tool; there is no endpoint, credential
+  or CLI in the repo that could fetch it. Every re-sync starts with a human or an agent
+  pulling the file by hand, so CI can never detect upstream drift unattended. Worth knowing
+  as a limit rather than rediscovering it while building against it.
+  **The pattern worth keeping:** the milestone's "Done when" did not ask for the procedure.
+  It asked that *"the doc says which tier re-syncs and which does not"* — already true
+  before any code was written. The scope *bullet* had drifted past the acceptance
+  criterion. Checking the acceptance criterion rather than the task list is what turned an
+  hour of speculative documentation into a decision. **Read the Done-when before building
+  the last item on the list.**

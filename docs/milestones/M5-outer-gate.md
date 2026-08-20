@@ -1,6 +1,6 @@
-# M2 — The outer gate
+# M5 — The outer gate
 
-**Status:** not started. Blocked on M0 step 2.
+**Status:** not started. M0 step 2 landed, so the blocker is cleared — resequenced behind the design work.
 
 ## Goal
 

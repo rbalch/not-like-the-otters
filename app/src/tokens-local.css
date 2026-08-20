@@ -1,0 +1,11 @@
+/* Local design tokens — ours, not vendored.
+ *
+ * Unlike classical.css, this file is never overwritten by a re-sync: it holds
+ * tokens the app needs that Classical does not define. classical.css must stay
+ * byte-identical to upstream so a future re-sync can diff cleanly against it;
+ * anything the app forks or extends belongs here instead. See DEC-1.
+ */
+
+:root {
+  --color-danger: #b3261e;
+}
