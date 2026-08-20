@@ -8,4 +8,27 @@
 
 :root {
   --color-danger: #b3261e;
+
+  /* Monospace stack — Classical's one deliberate exception to its two-family
+   * rule (Cormorant Garamond / Lora). Log lines, ids and stats in the
+   * console wall read as data, not prose, so they use the system
+   * UI-monospace stack instead of a third serif/sans. This is the only
+   * place the raw stack may appear; every component references
+   * `var(--font-mono)`. See docs/design_handoff_console_wall/README.md.
+   */
+  --font-mono: ui-monospace, Menlo, monospace;
+
+  /* `color-mix(in srgb, var(--color-text) N%, transparent)` tints, used
+   * throughout the console wall to fade text against `--color-bg` without a
+   * second colour ramp. Defined once here, at the percentages the design
+   * handoff actually uses, so components reference the token instead of
+   * repeating the color-mix expression per use site. Named after the
+   * tonal-ramp convention classical.css already uses for --color-accent-N.
+   */
+  --color-text-35: color-mix(in srgb, var(--color-text) 35%, transparent);
+  --color-text-40: color-mix(in srgb, var(--color-text) 40%, transparent);
+  --color-text-45: color-mix(in srgb, var(--color-text) 45%, transparent);
+  --color-text-50: color-mix(in srgb, var(--color-text) 50%, transparent);
+  --color-text-55: color-mix(in srgb, var(--color-text) 55%, transparent);
+  --color-text-72: color-mix(in srgb, var(--color-text) 72%, transparent);
 }

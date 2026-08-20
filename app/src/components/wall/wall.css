@@ -1,0 +1,127 @@
+/* The console wall — the multi-pane status screen (M1/M5 direction). See
+ * docs/design_handoff_console_wall/README.md and reference.html#3a.
+ *
+ * Kept separate from App.css on purpose: App.css is scoped to the
+ * `#decisions` screen (M2). Splitting per-screen stylesheets means a future
+ * change to one screen's CSS can't accidentally leak into the other's
+ * selectors, and each stays reviewable on its own.
+ *
+ * Every hairline here comes from the 1px grid `gap` sitting over a
+ * `--color-divider` background, or an explicit 1px divider rule — panes
+ * never draw their own border (see Pane.tsx).
+ */
+
+.wall {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  color: var(--color-text);
+  background: var(--color-bg);
+  text-align: left;
+}
+
+.wall-rail {
+  width: 52px;
+  flex: none;
+  border-right: 1px solid var(--color-divider);
+}
+
+.wall-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wall-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.wall-header-title {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.wall-header-status {
+  font: 400 11px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-45);
+}
+
+.wall-header-hint {
+  margin-left: auto;
+  font: 400 10px/1 var(--font-mono);
+  color: var(--color-text-40);
+}
+
+.wall-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 268px 1fr;
+  gap: 1px;
+  background: var(--color-divider);
+}
+
+.wall-right {
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  background: var(--color-divider);
+}
+
+.wall-bottom {
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 1px;
+  background: var(--color-divider);
+}
+
+.pane {
+  background: var(--color-bg);
+  padding: var(--space-4);
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.kicker {
+  flex: none;
+}
+
+.kicker-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.kicker-label {
+  font: 600 10px/1 var(--font-heading);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+
+.kicker-meta {
+  margin-left: auto;
+  font: 400 10.5px/1 var(--font-mono);
+  color: var(--color-text-45);
+}
+
+.kicker-rule {
+  height: 1px;
+  background: var(--color-divider);
+  margin: var(--space-2) 0 var(--space-3);
+}

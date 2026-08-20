@@ -444,6 +444,65 @@ and forcing a harness observation into one loses what makes it interesting.
   needed cropping instead. The defence is measuring assets at the point of use rather than
   trusting a prior measurement, which is a habit, not a rule.
 
+### F-19 — One default, declared in two modules, disagreeing
+
+- **Date:** 2026-08-19
+- **Bin:** 2
+- **Claim:** A value that determines default application state must have exactly one
+  declaration site. A second module must not establish that same default by a side effect,
+  and where a fallback is unavoidable in two places, the two must be unable to drift
+  silently.
+- **Sightings:** 1
+- **Action:** soft — fixed in `aefa9ae`, no control yet
+- **Notes:** T1. The spec required two things that appeared to conflict: the app opens on
+  the wall, and `App.test.tsx` keeps passing untouched — but that test renders `<App />`
+  with no hash and expects the decisions screen. The builder reconciled them by making
+  `App.tsx`'s empty-hash default `decisions` while `main.tsx` wrote
+  `window.location.hash = '#wall'` at module scope. It **flagged this itself** as the one
+  place it had to reconcile two literal instructions, which is why the round was cheap.
+  Both reviewers found it independently and framed it differently: the boundary reviewer
+  as a seam risk for T2/T8, the correctness reviewer as an untested cross-file coupling.
+  Neither framing is the whole finding. What makes it Bin 2 is the **failure direction**:
+  the natural way to write "close and reset" in T8 is `location.hash = ''`, which silently
+  resolved to *decisions* — the opposite of the app's documented default. Ambiguity failing
+  open, toward a screen nobody chose for that trigger.
+  The fix dissolves the conflict rather than documenting it. `viewFromHash` became a pure
+  recogniser returning `View | null` — it recognises, it does not decide — and the default
+  moved to an explicit `defaultView` prop that `main.tsx` supplies. `App.test.tsx` passes
+  untouched because the prop default is `decisions`, and an emptied hash now falls back to
+  *the caller's* default, so the T8 scenario lands on the wall. Verified by execution by
+  both reviewers, not by reading the comment.
+  **Honest note on the bin.** The narrow form is machine-checkable — "no module-scope write
+  to `window.location` in an entry point" — but that is a rule about one instance, not the
+  pattern. The general pattern (two declarations of one default, agreement enforced only by
+  a comment) needs semantics no linter has. Logged as Bin 2 because the claim is concrete
+  and cross-file, with the caveat recorded rather than smoothed over. Held at one sighting.
+  Deliberately **not** counted as F-13's second sighting: F-13 is scoped to one control's
+  two halves walking the same input, and stretching it to cover this is the count-inflation
+  its own notes warn about.
+
+### F-20 — The work item's headline acceptance criterion had no test
+
+- **Date:** 2026-08-19
+- **Bin:** 3
+- **Claim:** The checkable restatement — "every behaviour named in a spec's Done-when has a
+  corresponding test" — cannot be mechanised. No tool maps a prose acceptance criterion to
+  the test that covers it, and any proxy (a test whose name matches a keyword) would fire
+  on correct code constantly.
+- **Sightings:** 1
+- **Action:** fixed in `f374770`, deliberately not a control
+- **Notes:** T1. The task's Done-when opens with "the window opens on the wall, not the
+  decisions table." Nothing in `make check` exercised it: no test set a hash before
+  rendering, no `main.test.tsx` existed, and the boot-time normalisation was the one piece
+  of behaviour in the work item that only a human running `npm run tauri dev` would catch.
+  Both reviewers flagged the gap; the correctness reviewer scored it blocking.
+  Worth recording despite being Bin 3 because the shape recurs: the gate was green, the
+  suite was substantial (13 new tests), and the untested thing was the item's *headline*
+  claim. Test count is not coverage of the criterion. This belongs in the reviewer's
+  checklist — read the Done-when, then ask which test would fail if that sentence stopped
+  being true — and it pairs with H-11's lesson from M2 close about reading the acceptance
+  criterion rather than the scope bullets.
+
 ---
 
 ## Harness findings
@@ -695,3 +754,48 @@ agent output, and forcing a harness observation into one loses what makes it int
   criterion. Checking the acceptance criterion rather than the task list is what turned an
   hour of speculative documentation into a decision. **Read the Done-when before building
   the last item on the list.**
+
+### H-12 — H-4's lesson was on file, and the orchestrator's own pre-flight filtered it out
+
+- **Date:** 2026-08-19
+- **Notes:** T1, and an **orchestrator error of the same kind as H-4, repeated after it was
+  already solved.** H-4 recorded that reviewers mutating one working tree cannot run
+  concurrently; H-5 confirmed serialising fixed it and closed with "keep reviewers serial
+  whenever they mutate the tree." I dispatched both reviewers in parallel anyway, in both
+  rounds. In round 2 they collided: the boundary reviewer found the correctness reviewer's
+  `app/src/__probe2.test.tsx` on disk, correctly refused to trust state it had not created,
+  deleted it, and re-ran the gate. Its reasoning was sound in isolation — it had no way to
+  see a peer — and it surfaced the anomaly rather than absorbing it, which is why the cost
+  stayed small this time: no false finding, both verdicts intact, tree clean.
+  **The interesting part is not the collision, it is why the lesson did not reach me.** The
+  `build-loop` skill instructs the orchestrator to read `docs/ledger-findings.md`
+  "specifically the sighting counts." I did exactly that — grepped for `### F-` plus the
+  Bin/Sightings/Action lines — which by construction excludes the entire Harness findings
+  section. The one section written to change orchestrator behaviour is the one the
+  prescribed pre-flight cannot see. H-4 and H-5 were not forgotten; they were filtered.
+  A ledger that records a lesson the reader's own procedure skips is not yet earning its
+  keep on that lesson. **The fix is to the skill, not to me remembering harder:** the
+  pre-flight read must cover `## Harness findings` as well as the sighting counts, because
+  F-entries govern the code under review and H-entries govern the loop doing the reviewing.
+  Recorded as the second recurrence rather than a fresh observation, so the count is honest.
+
+### H-13 — The known DEC-1 blind spot was re-probed, and is about to become reachable
+
+- **Date:** 2026-08-19
+- **Notes:** T1. Told to invent its own violations, the boundary reviewer probed the DEC-1
+  control itself and confirmed that a `font-family` set through a JSX inline
+  `style={{...}}` prop — including via a style object held in a variable — slips the
+  control entirely. This is not new: `find_font_violations_ts` is an explicit no-op,
+  documented as a decision in the control's own docstring. It went unexploited here, and
+  the reviewer verified that rather than assuming it: `grep -rn "style={"` across every
+  touched file is empty.
+  Logged because the risk profile changes next. T1 was a frame with no content, so there
+  was nothing to compute a style for. T3–T6 fill four panes with exactly the things that
+  tempt an inline style — a sighting bar whose fill count is data-driven, a gate word whose
+  colour depends on green/red, log lines coloured by severity. The first computed
+  `style={{ fontFamily: ... }}` in those panes would be a real, silent DEC-1 hole in a
+  project whose entire premise is that DEC-1 is enforced.
+  No action now, and specifically **not** a new decision — authoring a control for a
+  hazard that has never once occurred is the speculative-rule failure the harness exists to
+  avoid. Carried as a watch, and named in the T3–T6 briefs so a builder does not reach for
+  it by accident.
